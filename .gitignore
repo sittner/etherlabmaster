@@ -46,3 +46,11 @@ tool/ethercat
 device_drivers.md
 generated_table.md
 doxygen-output/
+debian/autoreconf.*
+debian/*.debhelper
+debian/*.log
+debian/*.substvars
+debian/etherlabmaster-dev
+debian/etherlabmaster
+debian/files
+debian/tmp
