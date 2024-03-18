@@ -318,7 +318,8 @@ int ec_fsm_coe_prepare_dict(
         )
 {
     ec_slave_t *slave = fsm->slave;
-    uint8_t *data = ec_slave_mbox_prepare_send(slave, datagram, 0x03, 8);
+    uint8_t *data = ec_slave_mbox_prepare_send(slave, datagram,
+			EC_MBOX_TYPE_COE, 8);
     if (IS_ERR(data)) {
         return PTR_ERR(data);
     }
@@ -470,7 +471,8 @@ int ec_fsm_coe_dict_prepare_desc(
         )
 {
     ec_slave_t *slave = fsm->slave;
-    u8 *data = ec_slave_mbox_prepare_send(slave, datagram, 0x03, 8);
+    u8 *data = ec_slave_mbox_prepare_send(slave, datagram, EC_MBOX_TYPE_COE,
+			8);
     if (IS_ERR(data)) {
         return PTR_ERR(data);
     }
@@ -532,7 +534,7 @@ void ec_fsm_coe_dict_response(
         return;
     }
 
-    if (mbox_prot != 0x03) { // CoE
+    if (mbox_prot != EC_MBOX_TYPE_COE) {
         EC_SLAVE_ERR(slave, "Received mailbox protocol 0x%02X as response.\n",
                 mbox_prot);
         fsm->state = ec_fsm_coe_error;
@@ -752,7 +754,8 @@ int ec_fsm_coe_dict_prepare_entry(
         )
 {
     ec_slave_t *slave = fsm->slave;
-    u8 *data = ec_slave_mbox_prepare_send(slave, datagram, 0x03, 10);
+    u8 *data = ec_slave_mbox_prepare_send(slave, datagram, EC_MBOX_TYPE_COE,
+			10);
     if (IS_ERR(data)) {
         return PTR_ERR(data);
     }
@@ -813,7 +816,7 @@ void ec_fsm_coe_dict_desc_response(
         return;
     }
 
-    if (mbox_prot != 0x03) { // CoE
+    if (mbox_prot != EC_MBOX_TYPE_COE) {
         EC_SLAVE_ERR(slave, "Received mailbox protocol 0x%02X as response.\n",
                 mbox_prot);
         fsm->state = ec_fsm_coe_error;
@@ -1049,7 +1052,7 @@ void ec_fsm_coe_dict_entry_response(
         return;
     }
 
-    if (mbox_prot != 0x03) { // CoE
+    if (mbox_prot != EC_MBOX_TYPE_COE) {
         EC_SLAVE_ERR(slave, "Received mailbox protocol"
                 " 0x%02X as response.\n", mbox_prot);
         fsm->state = ec_fsm_coe_error;
@@ -1199,8 +1202,9 @@ int ec_fsm_coe_prepare_down_start(
     ec_sdo_request_t *request = fsm->request;
     uint8_t data_set_size;
 
-    if (request->data_size <= 4) { // use expedited transfer type
-        data = ec_slave_mbox_prepare_send(slave, datagram, 0x03,
+    if (request->data_size > 0 && request->data_size <= 4) {
+        // use expedited transfer mode for lengths between 1 and 4 bytes
+        data = ec_slave_mbox_prepare_send(slave, datagram, EC_MBOX_TYPE_COE,
                 EC_COE_DOWN_REQ_HEADER_SIZE);
         if (IS_ERR(data)) {
             request->errno = PTR_ERR(data);
@@ -1227,7 +1231,7 @@ int ec_fsm_coe_prepare_down_start(
             ec_print_data(data, EC_COE_DOWN_REQ_HEADER_SIZE);
         }
     }
-    else { // request->data_size > 4, use normal transfer type
+    else { // data_size < 1 or data_size > 4, use normal transfer type
         size_t data_size,
                max_data_size =
                    slave->configured_rx_mailbox_size - EC_MBOX_HEADER_SIZE,
@@ -1241,7 +1245,7 @@ int ec_fsm_coe_prepare_down_start(
             data_size = required_data_size;
         }
 
-        data = ec_slave_mbox_prepare_send(slave, datagram, 0x03,
+        data = ec_slave_mbox_prepare_send(slave, datagram, EC_MBOX_TYPE_COE,
                 data_size);
         if (IS_ERR(data)) {
             request->errno = PTR_ERR(data);
@@ -1491,7 +1495,7 @@ void ec_fsm_coe_down_prepare_segment_request(
             + EC_COE_DOWN_SEG_MIN_DATA_SIZE;
     }
 
-    data = ec_slave_mbox_prepare_send(slave, datagram, 0x03,
+    data = ec_slave_mbox_prepare_send(slave, datagram, EC_MBOX_TYPE_COE,
             data_size);
     if (IS_ERR(data)) {
         request->errno = PTR_ERR(data);
@@ -1565,7 +1569,7 @@ void ec_fsm_coe_down_response(
         return;
     }
 
-    if (mbox_prot != 0x03) { // CoE
+    if (mbox_prot != EC_MBOX_TYPE_COE) {
         request->errno = EIO;
         fsm->state = ec_fsm_coe_error;
         EC_SLAVE_ERR(slave, "Received mailbox protocol 0x%02X as response.\n",
@@ -1743,7 +1747,7 @@ void ec_fsm_coe_down_seg_response(
         return;
     }
 
-    if (mbox_prot != 0x03) { // CoE
+    if (mbox_prot != EC_MBOX_TYPE_COE) {
         request->errno = EIO;
         fsm->state = ec_fsm_coe_error;
         EC_SLAVE_ERR(slave, "Received mailbox protocol 0x%02X as response.\n",
@@ -1844,7 +1848,8 @@ int ec_fsm_coe_prepare_up(
     ec_sdo_request_t *request = fsm->request;
     ec_master_t *master = slave->master;
 
-    u8 *data = ec_slave_mbox_prepare_send(slave, datagram, 0x03, 10);
+    u8 *data = ec_slave_mbox_prepare_send(slave, datagram, EC_MBOX_TYPE_COE,
+			10);
     if (IS_ERR(data)) {
         request->errno = PTR_ERR(data);
         return PTR_ERR(data);
@@ -2035,7 +2040,8 @@ void ec_fsm_coe_up_prepare_segment_request(
         )
 {
     uint8_t *data =
-        ec_slave_mbox_prepare_send(fsm->slave, datagram, 0x03, 10);
+        ec_slave_mbox_prepare_send(fsm->slave, datagram, EC_MBOX_TYPE_COE,
+				10);
     if (IS_ERR(data)) {
         fsm->request->errno = PTR_ERR(data);
         fsm->state = ec_fsm_coe_error;
@@ -2108,7 +2114,7 @@ void ec_fsm_coe_up_response(
         ec_print_data(data, rec_size);
     }
 
-    if (mbox_prot != 0x03) { // CoE
+    if (mbox_prot != EC_MBOX_TYPE_COE) {
         request->errno = EIO;
         fsm->state = ec_fsm_coe_error;
         EC_SLAVE_WARN(slave, "Received mailbox protocol 0x%02X"
@@ -2213,14 +2219,6 @@ void ec_fsm_coe_up_response(
 
         data_size = rec_size - 10;
         fsm->complete_size = EC_READ_U32(data + 6);
-
-        if (!fsm->complete_size) {
-            request->errno = EIO;
-            fsm->state = ec_fsm_coe_error;
-            EC_SLAVE_ERR(slave, "No complete size supplied!\n");
-            ec_print_data(data, rec_size);
-            return;
-        }
 
         ret = ec_sdo_request_alloc(request, fsm->complete_size);
         if (ret) {
@@ -2413,7 +2411,7 @@ void ec_fsm_coe_up_seg_response(
         ec_print_data(data, rec_size);
     }
 
-    if (mbox_prot != 0x03) { // CoE
+    if (mbox_prot != EC_MBOX_TYPE_COE) {
         EC_SLAVE_ERR(slave, "Received mailbox protocol 0x%02X as response.\n",
                 mbox_prot);
         request->errno = EIO;

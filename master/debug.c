@@ -83,8 +83,13 @@ int ec_debug_init(
 
     memset(&dbg->stats, 0, sizeof(struct net_device_stats));
 
-    if (!(dbg->dev =
-          alloc_netdev(sizeof(ec_debug_t *), name, ether_setup))) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 17, 0)
+    dbg->dev = alloc_netdev(sizeof(ec_debug_t *), name, NET_NAME_UNKNOWN, ether_setup);
+#else
+    dbg->dev = alloc_netdev(sizeof(ec_debug_t *), name, ether_setup);
+#endif
+    if (!(dbg->dev)) 
+    {
         EC_MASTER_ERR(device->master, "Unable to allocate net_device"
                 " for debug object!\n");
         return -ENODEV;
@@ -134,7 +139,11 @@ void ec_debug_register(
     ec_debug_unregister(dbg);
 
     // use the Ethernet address of the physical device for the debug device
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
+    eth_hw_addr_set(dbg->dev, net_dev->dev_addr);
+#else
     memcpy(dbg->dev->dev_addr, net_dev->dev_addr, ETH_ALEN);
+#endif
 
     // connect the net_device to the kernel
     if ((result = register_netdev(dbg->dev))) {

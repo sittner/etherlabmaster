@@ -1,8 +1,6 @@
 /******************************************************************************
  *
- *  $Id$
- *
- *  Copyright (C) 2006-2012  Florian Pose, Ingenieurgemeinschaft IgH
+ *  Copyright (C) 2006-2023  Florian Pose, Ingenieurgemeinschaft IgH
  *
  *  This file is part of the IgH EtherCAT Master.
  *
@@ -42,6 +40,7 @@
 #include "globals.h"
 #include "master.h"
 #include "voe_handler.h"
+#include "flag.h"
 
 #include "slave_config.h"
 
@@ -86,9 +85,11 @@ void ec_slave_config_init(
 
     INIT_LIST_HEAD(&sc->sdo_configs);
     INIT_LIST_HEAD(&sc->sdo_requests);
+    INIT_LIST_HEAD(&sc->soe_requests);
     INIT_LIST_HEAD(&sc->reg_requests);
     INIT_LIST_HEAD(&sc->voe_handlers);
     INIT_LIST_HEAD(&sc->soe_configs);
+    INIT_LIST_HEAD(&sc->flags);
 
     ec_coe_emerg_ring_init(&sc->emerg_ring, sc);
 }
@@ -108,6 +109,7 @@ void ec_slave_config_clear(
     ec_voe_handler_t *voe, *next_voe;
     ec_reg_request_t *reg, *next_reg;
     ec_soe_request_t *soe, *next_soe;
+    ec_flag_t *flag, *next_flag;
 
     ec_slave_config_detach(sc);
 
@@ -129,6 +131,13 @@ void ec_slave_config_clear(
         kfree(req);
     }
 
+    // free all SoE requests
+    list_for_each_entry_safe(soe, next_soe, &sc->soe_requests, list) {
+        list_del(&soe->list);
+        ec_soe_request_clear(soe);
+        kfree(soe);
+    }
+
     // free all register requests
     list_for_each_entry_safe(reg, next_reg, &sc->reg_requests, list) {
         list_del(&reg->list);
@@ -148,6 +157,13 @@ void ec_slave_config_clear(
         list_del(&soe->list);
         ec_soe_request_clear(soe);
         kfree(soe);
+    }
+
+    // free all flags
+    list_for_each_entry_safe(flag, next_flag, &sc->flags, list) {
+        list_del(&flag->list);
+        ec_flag_clear(flag);
+        kfree(flag);
     }
 
     ec_coe_emerg_ring_clear(&sc->emerg_ring);
@@ -453,7 +469,51 @@ const ec_soe_request_t *ec_slave_config_get_idn_by_pos_const(
 
 /*****************************************************************************/
 
-/** Finds a CoE handler via its position in the list.
+/** Get the number of feature flags.
+ *
+ * \return Number of feature flags.
+ */
+unsigned int ec_slave_config_flag_count(
+        const ec_slave_config_t *sc /**< Slave configuration. */
+        )
+{
+    const ec_flag_t *flag;
+    unsigned int count = 0;
+
+    list_for_each_entry(flag, &sc->flags, list) {
+        count++;
+    }
+
+    return count;
+}
+
+/*****************************************************************************/
+
+/** Finds a flag via its position in the list.
+ *
+ * Const version.
+ *
+ * \return Search result, or NULL.
+ */
+const ec_flag_t *ec_slave_config_get_flag_by_pos_const(
+        const ec_slave_config_t *sc, /**< Slave configuration. */
+        unsigned int pos /**< Position in the list. */
+        )
+{
+    const ec_flag_t *flag;
+
+    list_for_each_entry(flag, &sc->flags, list) {
+        if (pos--)
+            continue;
+        return flag;
+    }
+
+    return NULL;
+}
+
+/*****************************************************************************/
+
+/** Finds a CoE SDO request via its position in the list.
  *
  * \return Search result, or NULL.
  */
@@ -465,6 +525,28 @@ ec_sdo_request_t *ec_slave_config_find_sdo_request(
     ec_sdo_request_t *req;
 
     list_for_each_entry(req, &sc->sdo_requests, list) {
+        if (pos--)
+            continue;
+        return req;
+    }
+
+    return NULL;
+}
+
+/*****************************************************************************/
+
+/** Finds a SoE request via its position in the list.
+ *
+ * \return Search result, or NULL.
+ */
+ec_soe_request_t *ec_slave_config_find_soe_request(
+        ec_slave_config_t *sc, /**< Slave configuration. */
+        unsigned int pos /**< Position in the list. */
+        )
+{
+    ec_soe_request_t *req;
+
+    list_for_each_entry(req, &sc->soe_requests, list) {
         if (pos--)
             continue;
         return req;
@@ -512,6 +594,29 @@ ec_voe_handler_t *ec_slave_config_find_voe_handler(
         if (pos--)
             continue;
         return voe;
+    }
+
+    return NULL;
+}
+
+/*****************************************************************************/
+
+/** Finds a flag.
+ *
+ * \return Search result, or NULL.
+ */
+ec_flag_t *ec_slave_config_find_flag(
+        ec_slave_config_t *sc, /**< Slave configuration. */
+        const char *key /**< Flag key. */
+        )
+{
+    if (sc) {
+        ec_flag_t *flag;
+        list_for_each_entry(flag, &sc->flags, list) {
+            if (!strcmp(flag->key, key)) {
+                return flag;
+            }
+        }
     }
 
     return NULL;
@@ -1081,6 +1186,58 @@ ec_sdo_request_t *ecrt_slave_config_create_sdo_request(
 
 /*****************************************************************************/
 
+/** Same as ecrt_slave_config_create_soe_request(), but with ERR_PTR() return
+ * value.
+ */
+ec_soe_request_t *ecrt_slave_config_create_soe_request_err(
+        ec_slave_config_t *sc, uint8_t drive_no, uint16_t idn, size_t size)
+{
+    ec_soe_request_t *req;
+    int ret;
+
+    EC_CONFIG_DBG(sc, 1, "%s(sc = 0x%p, "
+            "drive_no = 0x%02X, idn = 0x%04X, size = %zu)\n",
+            __func__, sc, drive_no, idn, size);
+
+    if (!(req = (ec_soe_request_t *)
+                kmalloc(sizeof(ec_soe_request_t), GFP_KERNEL))) {
+        EC_CONFIG_ERR(sc, "Failed to allocate IDN request memory!\n");
+        return ERR_PTR(-ENOMEM);
+    }
+
+    ec_soe_request_init(req);
+    ecrt_soe_request_idn(req, drive_no, idn);
+
+    ret = ec_soe_request_alloc(req, size);
+    if (ret < 0) {
+        ec_soe_request_clear(req);
+        kfree(req);
+        return ERR_PTR(ret);
+    }
+
+    // prepare data for optional writing
+    memset(req->data, 0x00, size);
+    req->data_size = size;
+
+    down(&sc->master->master_sem);
+    list_add_tail(&req->list, &sc->soe_requests);
+    up(&sc->master->master_sem);
+
+    return req;
+}
+
+/*****************************************************************************/
+
+ec_soe_request_t *ecrt_slave_config_create_soe_request(
+        ec_slave_config_t *sc, uint8_t drive_no, uint16_t idn, size_t size)
+{
+    ec_soe_request_t *req = ecrt_slave_config_create_soe_request_err(sc,
+            drive_no, idn, size);
+    return IS_ERR(req) ? NULL : req;
+}
+
+/*****************************************************************************/
+
 /** Same as ecrt_slave_config_create_reg_request(), but with ERR_PTR() return
  * value.
  */
@@ -1238,6 +1395,42 @@ int ecrt_slave_config_idn(ec_slave_config_t *sc, uint8_t drive_no,
 
 /*****************************************************************************/
 
+int ecrt_slave_config_flag(ec_slave_config_t *sc, const char *key,
+        int32_t value)
+{
+    ec_flag_t *flag;
+
+    EC_CONFIG_DBG(sc, 1, "%s(sc = 0x%p, key = %s, value = %i)\n",
+            __func__, sc, key, value);
+
+
+    flag = ec_slave_config_find_flag(sc, key);
+    if (flag) {
+        flag->value = value; // overwrite value
+    }
+    else { // new flag
+        int ret;
+
+        if (!(flag = (ec_flag_t *) kmalloc(sizeof(ec_flag_t), GFP_KERNEL))) {
+            EC_CONFIG_ERR(sc, "Failed to allocate memory for flag!\n");
+            return -ENOMEM;
+        }
+
+        ret = ec_flag_init(flag, key, value);
+        if (ret) {
+            kfree(flag);
+            return ret;
+        }
+
+        down(&sc->master->master_sem);
+        list_add_tail(&flag->list, &sc->flags);
+        up(&sc->master->master_sem);
+    }
+    return 0;
+}
+
+/*****************************************************************************/
+
 /** \cond */
 
 EXPORT_SYMBOL(ecrt_slave_config_sync_manager);
@@ -1248,6 +1441,7 @@ EXPORT_SYMBOL(ecrt_slave_config_pdo_mapping_add);
 EXPORT_SYMBOL(ecrt_slave_config_pdo_mapping_clear);
 EXPORT_SYMBOL(ecrt_slave_config_pdos);
 EXPORT_SYMBOL(ecrt_slave_config_reg_pdo_entry);
+EXPORT_SYMBOL(ecrt_slave_config_reg_pdo_entry_pos);
 EXPORT_SYMBOL(ecrt_slave_config_dc);
 EXPORT_SYMBOL(ecrt_slave_config_sdo);
 EXPORT_SYMBOL(ecrt_slave_config_sdo8);
@@ -1259,10 +1453,12 @@ EXPORT_SYMBOL(ecrt_slave_config_emerg_pop);
 EXPORT_SYMBOL(ecrt_slave_config_emerg_clear);
 EXPORT_SYMBOL(ecrt_slave_config_emerg_overruns);
 EXPORT_SYMBOL(ecrt_slave_config_create_sdo_request);
+EXPORT_SYMBOL(ecrt_slave_config_create_soe_request);
 EXPORT_SYMBOL(ecrt_slave_config_create_voe_handler);
 EXPORT_SYMBOL(ecrt_slave_config_create_reg_request);
 EXPORT_SYMBOL(ecrt_slave_config_state);
 EXPORT_SYMBOL(ecrt_slave_config_idn);
+EXPORT_SYMBOL(ecrt_slave_config_flag);
 
 /** \endcond */
 

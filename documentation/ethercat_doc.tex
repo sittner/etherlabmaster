@@ -2,21 +2,18 @@
 %
 %  IgH EtherCAT Master Documentation
 %
-%  $Id$
-%
 %  vi: spell spelllang=en tw=78
 %
 %------------------------------------------------------------------------------
 
-\documentclass[a4paper,12pt,BCOR6mm,bibtotoc,idxtotoc]{scrbook}
+\documentclass[a4paper,12pt,BCOR=6mm,bibtotoc,idxtotoc]{scrbook}
 
-\usepackage[latin1]{inputenc}
-\usepackage[automark,headsepline]{scrpage2}
+\usepackage[utf8]{inputenc}
+\usepackage[automark,headsepline]{scrlayer-scrpage}
 \usepackage{graphicx}
 \usepackage{makeidx}
 \usepackage[refpage]{nomencl}
 \usepackage{listings}
-\usepackage[nofancy]{rcsinfo}
 \usepackage{SIunits}
 \usepackage{amsmath} % for \text{}
 \usepackage{longtable}
@@ -28,12 +25,7 @@
 \setlength{\parskip}{0.8ex plus 0.8ex minus 0.5ex}
 \setlength{\parindent}{0mm}
 
-\setcounter{secnumdepth}{\subsubsectionlevel}
-
-\DeclareFontShape{OT1}{cmtt}{bx}{n}
-{
-  <5><6><7><8><9><10><10.95><12><14.4><17.28><20.74><24.88>cmttb10
-}{}
+\setcounter{secnumdepth}{\subsubsectionnumdepth}
 
 \lstset{basicstyle=\ttfamily\small,numberstyle=\tiny,aboveskip=4mm,
   belowskip=2mm,escapechar=`,breaklines=true}
@@ -63,7 +55,7 @@
 \newcommand{\IgH}{\raisebox{-0.7667ex}
   {\includegraphics[height=2.2ex]{images/ighsign}}}
 
-\rcsInfo $RCSId$
+\input{git}
 
 \newcommand{\masterversion}{1.5.2}
 \newcommand{\linenum}[1]{\normalfont\textcircled{\tiny #1}}
@@ -72,8 +64,8 @@
 \makenomenclature
 
 % Revision and date on inner footer
-\ifoot[\scriptsize\rcsInfoRevision, \rcsInfoDate]
-    {\scriptsize\rcsInfoRevision, \rcsInfoDate}
+\ifoot[\scriptsize\gitversion, \today]
+    {\scriptsize\gitversion, \date}
 
 %------------------------------------------------------------------------------
 
@@ -97,8 +89,8 @@
     \url{fp@igh.de}\\[1ex] Ingenieurgemeinschaft \IgH}
 
     \vspace{\fill}
-    {\Large Essen, \rcsInfoLongDate\\[1ex]
-      Revision \rcsInfoRevision}
+    {\Large Essen, \today\\[1ex]
+      Revision \gitversion}
   \end{center}
 \end{titlepage}
 
@@ -174,7 +166,7 @@ The list below gives a short summary of the master features.
 
 \begin{itemize}
 
-\item Designed as a kernel module for Linux 2.6 / 3.x.
+\item Designed as a kernel module for Linux from version 2.6 (or newer).
 
 \item Implemented according to IEC 61158-12 \cite{dlspec} \cite{alspec}.
 
@@ -307,7 +299,7 @@ EtherCAT functionality (see \autoref{chap:api}).
 
   \item Accessing IDNs via the command-line tool.
 
-  \item Accessing IDNs at runtime via the the user-space library.
+  \item Accessing IDNs at runtime via the user-space library.
 
   \end{itemize}
 
@@ -1849,7 +1841,7 @@ is skipped.
 If this is the requested state, the state machine is finished.
 
 \item[SDO Configuration] If there is a slave configuration attached (see
-\autoref{sec:masterconfig}), and there are any SDO configurations are
+\autoref{sec:masterconfig}), and there are any SDO configurations that are
 provided by the application, these are sent to the slave.
 
 \item[PDO Configuration] The PDO configuration state machine is executed to
@@ -2106,7 +2098,7 @@ up, the passing of new socket buffers is suspended with a call to
 \paragraph{Creation of EoE Handlers}
 
 During bus scanning (see \autoref{sec:fsm-scan}), the master determines the
-supported mailbox protocols foe each slave. This is done by examining the
+supported mailbox protocols for each slave. This is done by examining the
 ``Supported Mailbox Protocols'' mask field at word address 0x001C of the
 SII\index{SII}. If bit 1 is set, the slave supports the EoE protocol. In this
 case, an EoE handler is created for that slave.
@@ -2391,6 +2383,13 @@ created, if the \lstinline+udev+ Package is installed. See
 
 %------------------------------------------------------------------------------
 
+\subsection{Display CRC Error Counters}
+\label{sec:ethercat-crc}
+
+\lstinputlisting[basicstyle=\ttfamily\footnotesize]{external/ethercat_crc}
+
+%------------------------------------------------------------------------------
+
 \subsection{Output PDO information in C Language}
 \label{sec:ethercat-cstruct}
 
@@ -2463,6 +2462,13 @@ created, if the \lstinline+udev+ Package is installed. See
 \lstinputlisting[basicstyle=\ttfamily\footnotesize]{external/ethercat_reg_read}
 
 \lstinputlisting[basicstyle=\ttfamily\footnotesize]{external/ethercat_reg_write}
+
+%------------------------------------------------------------------------------
+
+\subsection{Trigger a Bus Scan}
+\label{sec:rescan}
+
+\lstinputlisting[basicstyle=\ttfamily\footnotesize]{external/ethercat_rescan}
 
 %------------------------------------------------------------------------------
 
@@ -2903,7 +2909,7 @@ are rare, there are a few aspects that can (and should be) dealt with.
 
 %------------------------------------------------------------------------------
 
-\subsection{Application Interface Profiling}
+\section{Application Interface Profiling}
 \label{sec:timing-profile}
 \index{Profiling}
 % FIXME
@@ -2985,7 +2991,7 @@ in \autoref{sec:timing-bus}.
 
 %------------------------------------------------------------------------------
 
-\subsection{Bus Cycle Measuring}
+\section{Bus Cycle Measuring}
 \label{sec:timing-bus}
 \index{Bus cycle}
 
@@ -3052,18 +3058,17 @@ the master's website\footnote{\url{http://etherlab.org/en/ethercat/index.php}}
 at~the EtherLab project~\cite{etherlab} as a tarball.
 
 \item The most recent development revision (and moreover any other revision)
-can be obtained via the Mercurial~\cite{mercurial} repository on the master's
+can be obtained via the Git~\cite{git} repository on the master's
 project page on
-SourceForge.net\footnote{\url{http://sourceforge.net/projects/etherlabmaster}}.
+GitLab.com\footnote{\url{https://gitlab.com/etherlab.org/ethercat}}.
 The whole repository can be cloned with the command
 
 \begin{lstlisting}[breaklines=true]
-hg clone http://etherlabmaster.hg.sourceforge.net/hgweb/etherlabmaster/etherlabmaster `\textit{local-dir}`
+git clone https://gitlab.com/etherlab.org/ethercat.git `\textit{local-dir}`
 \end{lstlisting}
 
-\item Without a local Mercurial installation, tarballs of arbitrary revisions
-can be downloaded via the ``bz2'' links in the browsable repository
-pages\footnote{\url{http://etherlabmaster.hg.sourceforge.net/hgweb/etherlabmaster/etherlabmaster}}.
+\item Without a local Git installation, tarballs of arbitrary revisions
+can be downloaded via the ``Download'' button on GitLab.
 
 \end{enumerate}
 
@@ -3166,6 +3171,10 @@ interface) & \\
 \lstinline+--with-devices+ & Number of Ethernet devices for redundant
 operation ($>1$ switches redundancy on) & 1\\
 
+\lstinline+--with-systemdsystemunitdir+ & Systemd unit directory ("no"
+disables service file installation)
+& auto \\
+
 \lstinline+--enable-debug-if+ & Create a debug interface for each master & no\\
 
 \lstinline+--enable-debug-ring+ & Create a debug ring to record frames & no\\
@@ -3220,7 +3229,7 @@ $ `\textbf{make doc}`
 
 The interface documentation can be viewed by pointing a browser to the file
 \textit{doxygen-output/html/index.html}. The functions and data structures of
-the application interface a covered by an own module ``Application
+the application interface are covered by an own module ``Application
 Interface''.
 
 \section{Installing the Software}
@@ -3406,7 +3415,7 @@ misunderstandings. In: IEE journal ``Computing and Control Engineering'',
 \bibitem{doxygen} Doxygen. Source code documentation generator tool.
 \url{http://www.stack.nl/~dimitri/doxygen}, 2008.
 
-\bibitem{mercurial} Mercurial SCM. \url{http://mercurial.selenic.com}, 2010.
+\bibitem{git} Git SCM. \url{https://git-scm.com}, 2021.
 
 \bibitem{autoconf} Autoconf -- GNU Project -- Free Software Foundation (FSF).
 \url{http://www.gnu.org/software/autoconf}, 2010.

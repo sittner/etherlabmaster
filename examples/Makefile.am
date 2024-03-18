@@ -26,6 +26,7 @@
 #  industrial property and similar rights of Beckhoff Automation GmbH.
 #
 #------------------------------------------------------------------------------
+include $(top_srcdir)/Makefile.kbuild
 
 SUBDIRS =
 
@@ -54,6 +55,8 @@ SUBDIRS += \
 endif
 endif
 
+# Here DIST_SUBDIRS needs to be explicitely defined because
+# dc_rtai, mini and rtai are never added to `SUBDIRS`
 DIST_SUBDIRS = \
 	dc_rtai \
 	dc_user \
@@ -65,11 +68,5 @@ DIST_SUBDIRS = \
 	user \
 	xenomai \
 	xenomai_posix
-
-EXTRA_DIST = \
-	Kbuild.in
-
-BUILT_SOURCES = \
-	Kbuild
 
 #------------------------------------------------------------------------------

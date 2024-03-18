@@ -2,12 +2,12 @@
 
 set -x
 
-KERNELDIR=/data/kernel/linux-4.4.162
-PREVER=3.16
-KERNELVER=4.4
+KERNELDIR=/vol/data/kernel/linux-5.10.186
+KERNELVER=5.10
+PREVER=4.4
 
 for f in $KERNELDIR/drivers/net/ethernet/{realtek/8139too,realtek/r8169,intel/e100}.c; do
-    echo $f
+    echo Driver $f
     b=$(basename $f)
     o=${b/\./-$KERNELVER-orig.}
     e=${b/\./-$KERNELVER-ethercat.}
@@ -17,5 +17,5 @@ for f in $KERNELDIR/drivers/net/ethernet/{realtek/8139too,realtek/r8169,intel/e1
     op=${b/\./-$PREVER-orig.}
     ep=${b/\./-$PREVER-ethercat.}
     diff -u $op $ep | patch -p1 $e
-    hg add $o $e
+    git add $o $e
 done

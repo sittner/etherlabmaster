@@ -59,6 +59,7 @@ static unsigned int master_count; /**< Number of masters. */
 static char *backup_devices[MAX_MASTERS]; /**< Backup devices parameter. */
 static unsigned int backup_count; /**< Number of backup devices. */
 static unsigned int debug_level;  /**< Debug level parameter. */
+static unsigned int run_on_cpu = 0xffffffff; /**< Bind created kernel threads to a cpu. Default do not bind*/
 
 static ec_master_t *masters; /**< Array of masters. */
 static struct semaphore master_sem; /**< Master semaphore. */
@@ -85,6 +86,8 @@ module_param_array(backup_devices, charp, &backup_count, S_IRUGO);
 MODULE_PARM_DESC(backup_devices, "MAC addresses of backup devices");
 module_param_named(debug_level, debug_level, uint, S_IRUGO);
 MODULE_PARM_DESC(debug_level, "Debug level");
+module_param_named(run_on_cpu, run_on_cpu, uint, S_IRUGO);
+MODULE_PARM_DESC(run_on_cpu, "Bind kthreads to a specific cpu");
 
 /** \endcond */
 
@@ -112,7 +115,11 @@ int __init ec_init_module(void)
         }
     }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 4, 0)
     class = class_create(THIS_MODULE, "EtherCAT");
+#else
+    class = class_create("EtherCAT");
+#endif
     if (IS_ERR(class)) {
         EC_ERR("Failed to create device class.\n");
         ret = PTR_ERR(class);
@@ -150,7 +157,7 @@ int __init ec_init_module(void)
 
     for (i = 0; i < master_count; i++) {
         ret = ec_master_init(&masters[i], i, macs[i][0], macs[i][1],
-                    device_number, class, debug_level);
+                    device_number, class, debug_level, run_on_cpu);
         if (ret)
             goto out_free_masters;
     }
@@ -346,20 +353,20 @@ void ec_print_data(const uint8_t *data, /**< pointer to data */
 
     EC_DBG("");
     for (i = 0; i < size; i++) {
-        printk("%02X ", data[i]);
+        printk(KERN_CONT "%02X ", data[i]);
 
         if ((i + 1) % 16 == 0 && i < size - 1) {
-            printk("\n");
+            printk(KERN_CONT "\n");
             EC_DBG("");
         }
 
         if (i + 1 == 128 && size > 256) {
-            printk("dropped %zu bytes\n", size - 128 - i);
+            printk(KERN_CONT "dropped %zu bytes\n", size - 128 - i);
             i = size - 128;
             EC_DBG("");
         }
     }
-    printk("\n");
+    printk(KERN_CONT "\n");
 }
 
 /*****************************************************************************/
@@ -375,14 +382,18 @@ void ec_print_data_diff(const uint8_t *d1, /**< first data */
 
     EC_DBG("");
     for (i = 0; i < size; i++) {
-        if (d1[i] == d2[i]) printk(".. ");
-        else printk("%02X ", d2[i]);
+        if (d1[i] == d2[i]) {
+            printk(KERN_CONT ".. ");
+        }
+        else {
+            printk(KERN_CONT "%02X ", d2[i]);
+        }
         if ((i + 1) % 16 == 0) {
-            printk("\n");
+            printk(KERN_CONT "\n");
             EC_DBG("");
         }
     }
-    printk("\n");
+    printk(KERN_CONT "\n");
 }
 
 /*****************************************************************************/

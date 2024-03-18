@@ -4,9 +4,7 @@
 #
 #  Start script for EtherCAT to use with systemd
 #
-#  $Id$
-#
-#  Copyright (C) 2006-2012  Florian Pose, Ingenieurgemeinschaft IgH
+#  Copyright (C) 2006-2021  Florian Pose, Ingenieurgemeinschaft IgH
 #
 #  This file is part of the IgH EtherCAT Master.
 #
@@ -37,30 +35,41 @@ LSMOD=/sbin/lsmod
 MODPROBE=/sbin/modprobe
 RMMOD=/sbin/rmmod
 MODINFO=/sbin/modinfo
+IP=/bin/ip
 
-ETHERCAT=@prefix@/bin/ethercat
+ETHERCAT=@bindir@/ethercat
 
 #------------------------------------------------------------------------------
 
-ETHERCAT_CONFIG=/etc/ethercat.conf
+ETHERCAT_CONFIG=@sysconfdir@/ethercat.conf
 
 if [ ! -r ${ETHERCAT_CONFIG} ]; then
     echo ${ETHERCAT_CONFIG} not existing;
     exit 6
 fi
 
+# shellcheck source=/etc/ethercat.conf
 . ${ETHERCAT_CONFIG}
 
 #------------------------------------------------------------------------------
 
 parse_mac_address() {
+    local DEVICENAMETOMAC
     if [ -z "${1}" ]; then
         MAC=""
     elif echo ${1} | grep -qE '^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$'; then
         MAC=${1}
     else
-        echo Invalid MAC address \"${1}\" in ${ETHERCAT_CONFIG}
-        exit 1
+        DEVICENAMETOMAC=$("${IP}" address show dev "${1}" |
+            awk '/link\/ether/ { print $2; }')
+        if echo "${DEVICENAMETOMAC}" |
+            grep -qE '^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$'; then
+            MAC=${DEVICENAMETOMAC}
+        else
+            echo Invalid MAC address or interface name \""${1}"\" \
+                in ${ETHERCAT_CONFIG}
+            exit 1
+        fi
     fi
 }
 
@@ -84,18 +93,26 @@ start)
             BACKUPS=${BACKUPS},
         fi
 
-        parse_mac_address ${DEVICE}
+        parse_mac_address "${DEVICE}"
         DEVICES=${DEVICES}${MAC}
 
-        parse_mac_address ${BACKUP}
+        parse_mac_address "${BACKUP}"
         BACKUPS=${BACKUPS}${MAC}
 
-        MASTER_INDEX=$(expr ${MASTER_INDEX} + 1)
+        MASTER_INDEX=$((${MASTER_INDEX} + 1))
     done
+
+    if [ -z "${DEVICES}" ]; then
+        echo "ERROR: No network cards for EtherCAT specified."
+        echo -n "Please edit ${ETHERCAT_CONFIG} with root permissions"
+        echo -n " and set MASTER0_DEVICE variable to either a "
+        echo "network interface name (like eth0) or to a MAC address."
+        exit 1
+    fi
 
     # load master module
     if ! ${MODPROBE} ${MODPROBE_FLAGS} ec_master \
-            main_devices=${DEVICES} backup_devices=${BACKUPS}; then
+            main_devices="${DEVICES}" backup_devices="${BACKUPS}"; then
         exit 1
     fi
 
@@ -104,23 +121,23 @@ start)
     # check for modules to replace
     for MODULE in ${DEVICE_MODULES}; do
         ECMODULE=ec_${MODULE}
-        if ! ${MODINFO} ${ECMODULE} > /dev/null; then
+        if ! ${MODINFO} "${ECMODULE}" > /dev/null; then
             continue # ec_* module not found
         fi
 
-        if [ ${MODULE} != "generic" -a ${MODULE} != "ccat" ]; then
-            # try to unload standard module
+        if [ "${MODULE}" != "generic" ] && [ "${MODULE}" != "ccat" ]; then
+            # unload standard module and check if unloading was successful
+            ${RMMOD} "${MODULE}" 2> /dev/null || true
             if ${LSMOD} | grep "^${MODULE} " > /dev/null; then
-                if ! ${RMMOD} ${MODULE}; then
-                    ${RMMOD} ${LOADED_MODULES}
-                    exit 1
-                fi
+                # could not unload module
+                ${RMMOD} ${LOADED_MODULES}
+                exit 1
             fi
         fi
 
-        if ! ${MODPROBE} ${MODPROBE_FLAGS} ${ECMODULE}; then
-            if [ ${MODULE} != "generic" -a ${MODULE} != "ccat" ]; then
-                ${MODPROBE} ${MODPROBE_FLAGS} ${MODULE} # try to restore
+        if ! ${MODPROBE} ${MODPROBE_FLAGS} "${ECMODULE}"; then
+            if [ "${MODULE}" != "generic" ] && [ "${MODULE}" != "ccat" ]; then
+                ${MODPROBE} ${MODPROBE_FLAGS} "${MODULE}" # try to restore
             fi
             ${RMMOD} ${LOADED_MODULES}
             exit 1
@@ -141,7 +158,7 @@ stop)
         if ! ${LSMOD} | grep -q "^${ECMODULE} "; then
             continue # ec_* module not loaded
         fi
-        if ! ${RMMOD} ${ECMODULE}; then
+        if ! ${RMMOD} "${ECMODULE}"; then
             exit 1
         fi;
     done
@@ -150,10 +167,10 @@ stop)
 
     # load standard modules again
     for MODULE in ${DEVICE_MODULES}; do
-        if [ ${MODULE} == "generic" -o ${MODULE} == "ccat" ]; then
+        if [ "${MODULE}" == "generic" ] || [ "${MODULE}" == "ccat" ]; then
             continue
         fi
-        ${MODPROBE} ${MODPROBE_FLAGS} ${MODULE}
+        ${MODPROBE} ${MODPROBE_FLAGS} "${MODULE}"
     done
 
     exit 0
@@ -177,16 +194,16 @@ status)
     while true; do
         DEVICE=$(eval echo "\${MASTER${MASTER_COUNT}_DEVICE}")
         if [ -z "${DEVICE}" ]; then break; fi
-        MASTER_COUNT=$(expr ${MASTER_COUNT} + 1)
+        MASTER_COUNT=$((${MASTER_COUNT} + 1))
     done
 
     RESULT=0
 
-    for i in `seq 0 $(expr ${MASTER_COUNT} - 1)`; do
+    for i in $(seq 0 "$((${MASTER_COUNT} - 1))"); do
         echo -n "Master${i} "
 
         # Check if the master is in idle or operation phase
-        ${ETHERCAT} master --master ${i} 2>/dev/null | \
+        ${ETHERCAT} master --master "${i}" 2>/dev/null | \
             grep -qE 'Phase:[[:space:]]*Idle|Phase:[[:space:]]*Operation'
         EXITCODE=$?
 

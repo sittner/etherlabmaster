@@ -39,10 +39,6 @@
 
 /*****************************************************************************/
 
-/** Mailbox type for SoE.
- */
-#define EC_MBOX_TYPE_SOE 0x05
-
 /** SoE operations
  */
 enum ec_soe_opcodes {
@@ -202,12 +198,12 @@ void ec_fsm_soe_print_error(ec_fsm_soe_t *fsm /**< Finite state machine */)
     EC_SLAVE_ERR(fsm->slave, "");
 
     if (request->dir == EC_DIR_OUTPUT) {
-        printk("Writing");
+        printk(KERN_CONT "Writing");
     } else {
-        printk("Reading");
+        printk(KERN_CONT "Reading");
     }
 
-    printk(" IDN 0x%04X failed.\n", request->idn);
+    printk(KERN_CONT " IDN 0x%04X failed.\n", request->idn);
 }
 
 /******************************************************************************

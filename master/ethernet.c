@@ -28,8 +28,8 @@
  *****************************************************************************/
 
 /**
-   \file
-   Ethernet over EtherCAT (EoE).
+  \file
+  Ethernet over EtherCAT (EoE).
 */
 
 /*****************************************************************************/
@@ -44,6 +44,16 @@
 #include "mailbox.h"
 #include "ethernet.h"
 
+#ifdef CONFIG_SUSE_KERNEL
+#include <linux/suse_version.h>
+#else
+#  ifndef SUSE_VERSION
+#    define SUSE_VERSION 0
+#  endif
+#  ifndef SUSE_PATCHLEVEL
+#    define SUSE_PATCHLEVEL 0
+#  endif
+#endif
 /*****************************************************************************/
 
 /** Defines the debug level of EoE processing.
@@ -107,8 +117,9 @@ int ec_eoe_init(
         )
 {
     ec_eoe_t **priv;
-    int i, ret = 0;
+    int ret = 0;
     char name[EC_DATAGRAM_NAME_SIZE];
+    u8 mac_addr[ETH_ALEN] = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55};
 
     eoe->slave = slave;
 
@@ -171,8 +182,11 @@ int ec_eoe_init(
     eoe->dev->get_stats = ec_eoedev_stats;
 #endif
 
-    for (i = 0; i < ETH_ALEN; i++)
-        eoe->dev->dev_addr[i] = i | (i << 4);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0) || (SUSE_VERSION == 15 && SUSE_PATCHLEVEL >= 5)
+    eth_hw_addr_set(eoe->dev, mac_addr);
+#else
+    memcpy(eoe->dev->dev_addr, mac_addr, sizeof(mac_addr));
+#endif
 
     // initialize private data
     priv = netdev_priv(eoe->dev);
@@ -195,7 +209,13 @@ int ec_eoe_init(
     }
 
     // make the last address octet unique
-    eoe->dev->dev_addr[ETH_ALEN - 1] = (uint8_t) eoe->dev->ifindex;
+    mac_addr[ETH_ALEN - 1] = (uint8_t) eoe->dev->ifindex;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0) || (SUSE_VERSION == 15 && SUSE_PATCHLEVEL >= 5)
+    eth_hw_addr_set(eoe->dev, mac_addr);
+#else
+    memcpy(eoe->dev->dev_addr, mac_addr, sizeof(mac_addr));
+#endif
+
     return 0;
 
  out_free:
@@ -285,27 +305,28 @@ int ec_eoe_send(ec_eoe_t *eoe /**< EoE handler */)
     }
 
 #if EOE_DEBUG_LEVEL >= 2
-    EC_SLAVE_DBG(slave, 0, "EoE %s TX sending fragment %u%s"
-            " with %u octets (%u). %u frames queued.\n",
+    EC_SLAVE_DBG(eoe->slave, 0, "EoE %s TX sending fragment %u%s"
+            " with %zu octets (%zu). %u frames queued.\n",
             eoe->dev->name, eoe->tx_fragment_number,
             last_fragment ? "" : "+", current_size, complete_offset,
             eoe->tx_queued_frames);
 #endif
 
 #if EOE_DEBUG_LEVEL >= 3
-    EC_SLAVE_DBG(master, 0, "");
+    EC_SLAVE_DBG(eoe->slave, 0, "");
     for (i = 0; i < current_size; i++) {
-        printk("%02X ", eoe->tx_frame->skb->data[eoe->tx_offset + i]);
+        printk(KERN_CONT "%02X ",
+                eoe->tx_frame->skb->data[eoe->tx_offset + i]);
         if ((i + 1) % 16 == 0) {
-            printk("\n");
-            EC_SLAVE_DBG(master, 0, "");
+            printk(KERN_CONT "\n");
+            EC_SLAVE_DBG(eoe->slave, 0, "");
         }
     }
-    printk("\n");
+    printk(KERN_CONT "\n");
 #endif
 
     data = ec_slave_mbox_prepare_send(eoe->slave, &eoe->datagram,
-            0x02, current_size + 4);
+            EC_MBOX_TYPE_EOE, current_size + 4);
     if (IS_ERR(data))
         return PTR_ERR(data);
 
@@ -357,10 +378,10 @@ void ec_eoe_run(ec_eoe_t *eoe /**< EoE handler */)
  */
 void ec_eoe_queue(ec_eoe_t *eoe /**< EoE handler */)
 {
-   if (eoe->queue_datagram) {
-       ec_master_queue_datagram_ext(eoe->slave->master, &eoe->datagram);
-       eoe->queue_datagram = 0;
-   }
+    if (eoe->queue_datagram) {
+        ec_master_queue_datagram_ext(eoe->slave->master, &eoe->datagram);
+        eoe->queue_datagram = 0;
+    }
 }
 
 /*****************************************************************************/
@@ -484,7 +505,7 @@ void ec_eoe_state_rx_fetch(ec_eoe_t *eoe /**< EoE handler */)
         return;
     }
 
-    if (mbox_prot != 0x02) { // EoE FIXME mailbox handler necessary
+    if (mbox_prot != EC_MBOX_TYPE_EOE) { // FIXME mailbox handler necessary
         eoe->stats.rx_errors++;
 #if EOE_DEBUG_LEVEL >= 1
         EC_SLAVE_WARN(eoe->slave, "Other mailbox protocol response for %s.\n",
@@ -527,13 +548,13 @@ void ec_eoe_state_rx_fetch(ec_eoe_t *eoe /**< EoE handler */)
 #if EOE_DEBUG_LEVEL >= 3
     EC_SLAVE_DBG(eoe->slave, 0, "");
     for (i = 0; i < rec_size - 4; i++) {
-        printk("%02X ", data[i + 4]);
+        printk(KERN_CONT "%02X ", data[i + 4]);
         if ((i + 1) % 16 == 0) {
-            printk("\n");
+            printk(KERN_CONT "\n");
             EC_SLAVE_DBG(eoe->slave, 0, "");
         }
     }
-    printk("\n");
+    printk(KERN_CONT "\n");
 #endif
 
     data_size = time_appended ? rec_size - 8 : rec_size - 4;

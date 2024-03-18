@@ -1,8 +1,6 @@
 /******************************************************************************
  *
- *  $Id$
- *
- *  Copyright (C) 2006-2012  Florian Pose, Ingenieurgemeinschaft IgH
+ *  Copyright (C) 2006-2023  Florian Pose, Ingenieurgemeinschaft IgH
  *
  *  This file is part of the IgH EtherCAT Master.
  *
@@ -118,6 +116,8 @@ static ATTRIBUTES int ec_ioctl_master(
     io.domain_count = ec_master_domain_count(master);
 #ifdef EC_EOE
     io.eoe_handler_count = ec_master_eoe_handler_count(master);
+#else
+    io.eoe_handler_count = 0;
 #endif
     io.phase = (uint8_t) master->phase;
     io.active = (uint8_t) master->active;
@@ -1232,6 +1232,7 @@ static ATTRIBUTES int ec_ioctl_config(
     data.watchdog_intervals = sc->watchdog_intervals;
     data.sdo_count = ec_slave_config_sdo_count(sc);
     data.idn_count = ec_slave_config_idn_count(sc);
+    data.flag_count = ec_slave_config_flag_count(sc);
     data.slave_position = sc->slave ? sc->slave->ring_position : -1;
     data.dc_assign_activate = sc->dc_assign_activate;
     for (i = 0; i < EC_SYNC_SIGNAL_COUNT; i++) {
@@ -1479,10 +1480,73 @@ static ATTRIBUTES int ec_ioctl_config_idn(
 
     ioctl->drive_no = req->drive_no;
     ioctl->idn = req->idn;
-    ioctl->state = req->state;
+    ioctl->state = req->al_state;
     ioctl->size = req->data_size;
     memcpy(ioctl->data, req->data,
             min((u32) ioctl->size, (u32) EC_MAX_IDN_DATA_SIZE));
+
+    up(&master->master_sem);
+
+    if (copy_to_user((void __user *) arg, ioctl, sizeof(*ioctl))) {
+        kfree(ioctl);
+        return -EFAULT;
+    }
+
+    kfree(ioctl);
+    return 0;
+}
+
+/*****************************************************************************/
+
+/** Get slave configuration feature flag information.
+ *
+ * \return Zero on success, otherwise a negative error code.
+ */
+static ATTRIBUTES int ec_ioctl_config_flag(
+        ec_master_t *master, /**< EtherCAT master. */
+        void *arg /**< ioctl() argument. */
+        )
+{
+    ec_ioctl_config_flag_t *ioctl;
+    const ec_slave_config_t *sc;
+    const ec_flag_t *flag;
+    size_t size;
+
+    if (!(ioctl = kmalloc(sizeof(*ioctl), GFP_KERNEL))) {
+        return -ENOMEM;
+    }
+
+    if (copy_from_user(ioctl, (void __user *) arg, sizeof(*ioctl))) {
+        kfree(ioctl);
+        return -EFAULT;
+    }
+
+    if (down_interruptible(&master->master_sem)) {
+        kfree(ioctl);
+        return -EINTR;
+    }
+
+    if (!(sc = ec_master_get_config_const(
+                    master, ioctl->config_index))) {
+        up(&master->master_sem);
+        EC_MASTER_ERR(master, "Slave config %u does not exist!\n",
+                ioctl->config_index);
+        kfree(ioctl);
+        return -EINVAL;
+    }
+
+    if (!(flag = ec_slave_config_get_flag_by_pos_const(
+                    sc, ioctl->flag_pos))) {
+        up(&master->master_sem);
+        EC_MASTER_ERR(master, "Invalid flag position!\n");
+        kfree(ioctl);
+        return -EINVAL;
+    }
+
+    size = min((u32) strlen(flag->key), (u32) EC_MAX_FLAG_KEY_SIZE - 1);
+    memcpy(ioctl->key, flag->key, size);
+    ioctl->key[size] = 0x00;
+    ioctl->value = flag->value;
 
     up(&master->master_sem);
 
@@ -1835,7 +1899,9 @@ static ATTRIBUTES int ec_ioctl_send(
         return -EPERM;
     }
 
+    down( & master->io_sem );
     ecrt_master_send(master);
+    up( & master->io_sem );
     return 0;
 }
 
@@ -1855,7 +1921,9 @@ static ATTRIBUTES int ec_ioctl_receive(
         return -EPERM;
     }
 
+    down( & master->io_sem );
     ecrt_master_receive(master);
+    up( & master->io_sem );
     return 0;
 }
 
@@ -1954,7 +2022,9 @@ static ATTRIBUTES int ec_ioctl_sync_ref(
         return -EPERM;
     }
 
+    down( & master->io_sem );
     ecrt_master_sync_reference_clock(master);
+    up( & master->io_sem );
     return 0;
 }
 
@@ -1979,7 +2049,9 @@ static ATTRIBUTES int ec_ioctl_sync_ref_to(
         return -EFAULT;
     }
 
+    down( & master->io_sem );
     ecrt_master_sync_reference_clock_to(master, time);
+    up( & master->io_sem );
     return 0;
 }
 
@@ -1999,7 +2071,9 @@ static ATTRIBUTES int ec_ioctl_sync_slaves(
         return -EPERM;
     }
 
+    down( & master->io_sem );
     ecrt_master_sync_slave_clocks(master);
+    up( & master->io_sem );
     return 0;
 }
 
@@ -2050,7 +2124,9 @@ static ATTRIBUTES int ec_ioctl_sync_mon_queue(
         return -EPERM;
     }
 
+    down( & master->io_sem );
     ecrt_master_sync_monitor_queue(master);
+    up( & master->io_sem );
     return 0;
 }
 
@@ -2743,6 +2819,59 @@ static ATTRIBUTES int ec_ioctl_sc_create_sdo_request(
 
 /*****************************************************************************/
 
+/** Create an SoE request.
+ *
+ * \return Zero on success, otherwise a negative error code.
+ */
+static ATTRIBUTES int ec_ioctl_sc_create_soe_request(
+        ec_master_t *master, /**< EtherCAT master. */
+        void *arg, /**< ioctl() argument. */
+        ec_ioctl_context_t *ctx /**< Private data structure of file handle. */
+        )
+{
+    ec_ioctl_soe_request_t data;
+    ec_slave_config_t *sc;
+    ec_soe_request_t *req;
+
+    if (unlikely(!ctx->requested))
+        return -EPERM;
+
+    if (copy_from_user(&data, (void __user *) arg, sizeof(data))) {
+        return -EFAULT;
+    }
+
+    data.request_index = 0;
+
+    if (down_interruptible(&master->master_sem))
+        return -EINTR;
+
+    sc = ec_master_get_config(master, data.config_index);
+    if (!sc) {
+        up(&master->master_sem);
+        return -ENOENT;
+    }
+
+    list_for_each_entry(req, &sc->soe_requests, list) {
+        data.request_index++;
+    }
+
+    up(&master->master_sem); /** \todo sc could be invalidated */
+
+    req = ecrt_slave_config_create_soe_request_err(sc, data.drive_no,
+            data.idn, data.size);
+    if (IS_ERR(req)) {
+        return PTR_ERR(req);
+    }
+
+    if (copy_to_user((void __user *) arg, &data, sizeof(data))) {
+        return -EFAULT;
+    }
+
+    return 0;
+}
+
+/*****************************************************************************/
+
 /** Create a register request.
  *
  * \return Zero on success, otherwise a negative error code.
@@ -2939,6 +3068,63 @@ static ATTRIBUTES int ec_ioctl_sc_idn(
 
 /*****************************************************************************/
 
+/** Configures a feature flag.
+ *
+ * \return Zero on success, otherwise a negative error code.
+ */
+static ATTRIBUTES int ec_ioctl_sc_flag(
+        ec_master_t *master, /**< EtherCAT master. */
+        void *arg, /**< ioctl() argument. */
+        ec_ioctl_context_t *ctx /**< Private data structure of file handle. */
+        )
+{
+    ec_ioctl_sc_flag_t ioctl;
+    ec_slave_config_t *sc;
+    uint8_t *key;
+    int ret;
+
+    if (unlikely(!ctx->requested)) {
+        return -EPERM;
+    }
+
+    if (copy_from_user(&ioctl, (void __user *) arg, sizeof(ioctl))) {
+        return -EFAULT;
+    }
+
+    if (!ioctl.key_size) {
+        return -EINVAL;
+    }
+
+    if (!(key = kmalloc(ioctl.key_size + 1, GFP_KERNEL))) {
+        return -ENOMEM;
+    }
+
+    if (copy_from_user(key, (void __user *) ioctl.key, ioctl.key_size)) {
+        kfree(key);
+        return -EFAULT;
+    }
+    key[ioctl.key_size] = '\0';
+
+    if (down_interruptible(&master->master_sem)) {
+        kfree(key);
+        return -EINTR;
+    }
+
+    if (!(sc = ec_master_get_config(master, ioctl.config_index))) {
+        up(&master->master_sem);
+        kfree(key);
+        return -ENOENT;
+    }
+
+    up(&master->master_sem); /** \todo sc could be invalidated */
+
+    ret = ecrt_slave_config_flag(sc, key, ioctl.value);
+    kfree(key);
+    return ret;
+}
+
+/*****************************************************************************/
+
 /** Gets the domain's data size.
  *
  * \return Domain size, or a negative error code.
@@ -3057,7 +3243,9 @@ static ATTRIBUTES int ec_ioctl_domain_queue(
         return -ENOENT;
     }
 
+    down( & master->io_sem );
     ecrt_domain_queue(domain);
+    up( & master->io_sem );
     return 0;
 }
 
@@ -3341,6 +3529,255 @@ static ATTRIBUTES int ec_ioctl_sdo_request_data(
 
     if (copy_to_user((void __user *) data.data, ecrt_sdo_request_data(req),
                 ecrt_sdo_request_data_size(req)))
+        return -EFAULT;
+
+    return 0;
+}
+
+/*****************************************************************************/
+
+/** Sets an SoE request's drive number and IDN.
+ *
+ * \return Zero on success, otherwise a negative error code.
+ */
+static ATTRIBUTES int ec_ioctl_soe_request_index(
+        ec_master_t *master, /**< EtherCAT master. */
+        void *arg, /**< ioctl() argument. */
+        ec_ioctl_context_t *ctx /**< Private data structure of file handle. */
+        )
+{
+    ec_ioctl_soe_request_t data;
+    ec_slave_config_t *sc;
+    ec_soe_request_t *req;
+
+    if (unlikely(!ctx->requested))
+        return -EPERM;
+
+    if (copy_from_user(&data, (void __user *) arg, sizeof(data)))
+        return -EFAULT;
+
+    /* no locking of master_sem needed, because neither sc nor req will not be
+     * deleted in the meantime. */
+
+    if (!(sc = ec_master_get_config(master, data.config_index))) {
+        return -ENOENT;
+    }
+
+    if (!(req = ec_slave_config_find_soe_request(sc, data.request_index))) {
+        return -ENOENT;
+    }
+
+    ecrt_soe_request_idn(req, data.drive_no, data.idn);
+    return 0;
+}
+
+/*****************************************************************************/
+
+/** Sets an CoE request's timeout.
+ *
+ * \return Zero on success, otherwise a negative error code.
+ */
+static ATTRIBUTES int ec_ioctl_soe_request_timeout(
+        ec_master_t *master, /**< EtherCAT master. */
+        void *arg, /**< ioctl() argument. */
+        ec_ioctl_context_t *ctx /**< Private data structure of file handle. */
+        )
+{
+    ec_ioctl_soe_request_t data;
+    ec_slave_config_t *sc;
+    ec_soe_request_t *req;
+
+    if (unlikely(!ctx->requested))
+        return -EPERM;
+
+    if (copy_from_user(&data, (void __user *) arg, sizeof(data)))
+        return -EFAULT;
+
+    /* no locking of master_sem needed, because neither sc nor req will not be
+     * deleted in the meantime. */
+
+    if (!(sc = ec_master_get_config(master, data.config_index))) {
+        return -ENOENT;
+    }
+
+    if (!(req = ec_slave_config_find_soe_request(sc, data.request_index))) {
+        return -ENOENT;
+    }
+
+    ecrt_soe_request_timeout(req, data.timeout);
+    return 0;
+}
+
+/*****************************************************************************/
+
+/** Gets an SoE request's state.
+ *
+ * \return Zero on success, otherwise a negative error code.
+ */
+static ATTRIBUTES int ec_ioctl_soe_request_state(
+        ec_master_t *master, /**< EtherCAT master. */
+        void *arg, /**< ioctl() argument. */
+        ec_ioctl_context_t *ctx /**< Private data structure of file handle. */
+        )
+{
+    ec_ioctl_soe_request_t data;
+    ec_slave_config_t *sc;
+    ec_soe_request_t *req;
+
+    if (unlikely(!ctx->requested))
+        return -EPERM;
+
+    if (copy_from_user(&data, (void __user *) arg, sizeof(data)))
+        return -EFAULT;
+
+    /* no locking of master_sem needed, because neither sc nor req will not be
+     * deleted in the meantime. */
+
+    if (!(sc = ec_master_get_config(master, data.config_index))) {
+        return -ENOENT;
+    }
+
+    if (!(req = ec_slave_config_find_soe_request(sc, data.request_index))) {
+        return -ENOENT;
+    }
+
+    data.state = ecrt_soe_request_state(req);
+    if (data.state == EC_REQUEST_SUCCESS && req->dir == EC_DIR_INPUT) {
+        data.size = ecrt_soe_request_data_size(req);
+    }
+    else {
+        data.size = 0;
+    }
+
+    if (copy_to_user((void __user *) arg, &data, sizeof(data)))
+        return -EFAULT;
+
+    return 0;
+}
+
+/*****************************************************************************/
+
+/** Starts an SoE IDN read operation.
+ *
+ * \return Zero on success, otherwise a negative error code.
+ */
+static ATTRIBUTES int ec_ioctl_soe_request_read(
+        ec_master_t *master, /**< EtherCAT master. */
+        void *arg, /**< ioctl() argument. */
+        ec_ioctl_context_t *ctx /**< Private data structure of file handle. */
+        )
+{
+    ec_ioctl_soe_request_t data;
+    ec_slave_config_t *sc;
+    ec_soe_request_t *req;
+
+    if (unlikely(!ctx->requested))
+        return -EPERM;
+
+    if (copy_from_user(&data, (void __user *) arg, sizeof(data)))
+        return -EFAULT;
+
+    /* no locking of master_sem needed, because neither sc nor req will not be
+     * deleted in the meantime. */
+
+    if (!(sc = ec_master_get_config(master, data.config_index))) {
+        return -ENOENT;
+    }
+
+    if (!(req = ec_slave_config_find_soe_request(sc, data.request_index))) {
+        return -ENOENT;
+    }
+
+    ecrt_soe_request_read(req);
+    return 0;
+}
+
+/*****************************************************************************/
+
+/** Starts an SoE IDN write operation.
+ *
+ * \return Zero on success, otherwise a negative error code.
+ */
+static ATTRIBUTES int ec_ioctl_soe_request_write(
+        ec_master_t *master, /**< EtherCAT master. */
+        void *arg, /**< ioctl() argument. */
+        ec_ioctl_context_t *ctx /**< Private data structure of file handle. */
+        )
+{
+    ec_ioctl_soe_request_t data;
+    ec_slave_config_t *sc;
+    ec_soe_request_t *req;
+    int ret;
+
+    if (unlikely(!ctx->requested))
+        return -EPERM;
+
+    if (copy_from_user(&data, (void __user *) arg, sizeof(data)))
+        return -EFAULT;
+
+    if (!data.size) {
+        EC_MASTER_ERR(master, "IDN write: Data size may not be zero!\n");
+        return -EINVAL;
+    }
+
+    /* no locking of master_sem needed, because neither sc nor req will not be
+     * deleted in the meantime. */
+
+    if (!(sc = ec_master_get_config(master, data.config_index))) {
+        return -ENOENT;
+    }
+
+    if (!(req = ec_slave_config_find_soe_request(sc, data.request_index))) {
+        return -ENOENT;
+    }
+
+    ret = ec_soe_request_alloc(req, data.size);
+    if (ret)
+        return ret;
+
+    if (copy_from_user(req->data, (void __user *) data.data, data.size))
+        return -EFAULT;
+
+    req->data_size = data.size;
+    ecrt_soe_request_write(req);
+    return 0;
+}
+
+/*****************************************************************************/
+
+/** Read SoE IDN data.
+ *
+ * \return Zero on success, otherwise a negative error code.
+ */
+static ATTRIBUTES int ec_ioctl_soe_request_data(
+        ec_master_t *master, /**< EtherCAT master. */
+        void *arg, /**< ioctl() argument. */
+        ec_ioctl_context_t *ctx /**< Private data structure of file handle. */
+        )
+{
+    ec_ioctl_soe_request_t data;
+    ec_slave_config_t *sc;
+    ec_soe_request_t *req;
+
+    if (unlikely(!ctx->requested))
+        return -EPERM;
+
+    if (copy_from_user(&data, (void __user *) arg, sizeof(data)))
+        return -EFAULT;
+
+    /* no locking of master_sem needed, because neither sc nor req will not be
+     * deleted in the meantime. */
+
+    if (!(sc = ec_master_get_config(master, data.config_index))) {
+        return -ENOENT;
+    }
+
+    if (!(req = ec_slave_config_find_soe_request(sc, data.request_index))) {
+        return -ENOENT;
+    }
+
+    if (copy_to_user((void __user *) data.data, ecrt_soe_request_data(req),
+                ecrt_soe_request_data_size(req)))
         return -EFAULT;
 
     return 0;
@@ -3775,7 +4212,9 @@ static ATTRIBUTES int ec_ioctl_voe_exec(
         return -ENOENT;
     }
 
+    down( & master->io_sem );
     data.state = ecrt_voe_handler_execute(voe);
+    up( & master->io_sem );
     if (data.state == EC_REQUEST_SUCCESS && voe->dir == EC_DIR_INPUT)
         data.size = ecrt_voe_handler_data_size(voe);
     else
@@ -4253,6 +4692,9 @@ long EC_IOCTL(
         case EC_IOCTL_CONFIG_IDN:
             ret = ec_ioctl_config_idn(master, arg);
             break;
+        case EC_IOCTL_CONFIG_FLAG:
+            ret = ec_ioctl_config_flag(master, arg);
+            break;
 #ifdef EC_EOE
         case EC_IOCTL_EOE_HANDLER:
             ret = ec_ioctl_eoe_handler(master, arg);
@@ -4477,6 +4919,13 @@ long EC_IOCTL(
             }
             ret = ec_ioctl_sc_create_sdo_request(master, arg, ctx);
             break;
+        case EC_IOCTL_SC_SOE_REQUEST:
+            if (!ctx->writable) {
+                ret = -EPERM;
+                break;
+            }
+            ret = ec_ioctl_sc_create_soe_request(master, arg, ctx);
+            break;
         case EC_IOCTL_SC_REG_REQUEST:
             if (!ctx->writable) {
                 ret = -EPERM;
@@ -4500,6 +4949,13 @@ long EC_IOCTL(
                 break;
             }
             ret = ec_ioctl_sc_idn(master, arg, ctx);
+            break;
+        case EC_IOCTL_SC_FLAG:
+            if (!ctx->writable) {
+                ret = -EPERM;
+                break;
+            }
+            ret = ec_ioctl_sc_flag(master, arg, ctx);
             break;
         case EC_IOCTL_DOMAIN_SIZE:
             ret = ec_ioctl_domain_size(master, arg, ctx);
@@ -4557,6 +5013,40 @@ long EC_IOCTL(
             break;
         case EC_IOCTL_SDO_REQUEST_DATA:
             ret = ec_ioctl_sdo_request_data(master, arg, ctx);
+            break;
+        case EC_IOCTL_SOE_REQUEST_IDN:
+            if (!ctx->writable) {
+                ret = -EPERM;
+                break;
+            }
+            ret = ec_ioctl_soe_request_index(master, arg, ctx);
+            break;
+        case EC_IOCTL_SOE_REQUEST_TIMEOUT:
+            if (!ctx->writable) {
+                ret = -EPERM;
+                break;
+            }
+            ret = ec_ioctl_soe_request_timeout(master, arg, ctx);
+            break;
+        case EC_IOCTL_SOE_REQUEST_STATE:
+            ret = ec_ioctl_soe_request_state(master, arg, ctx);
+            break;
+        case EC_IOCTL_SOE_REQUEST_READ:
+            if (!ctx->writable) {
+                ret = -EPERM;
+                break;
+            }
+            ret = ec_ioctl_soe_request_read(master, arg, ctx);
+            break;
+        case EC_IOCTL_SOE_REQUEST_WRITE:
+            if (!ctx->writable) {
+                ret = -EPERM;
+                break;
+            }
+            ret = ec_ioctl_soe_request_write(master, arg, ctx);
+            break;
+        case EC_IOCTL_SOE_REQUEST_DATA:
+            ret = ec_ioctl_soe_request_data(master, arg, ctx);
             break;
         case EC_IOCTL_REG_REQUEST_DATA:
             ret = ec_ioctl_reg_request_data(master, arg, ctx);

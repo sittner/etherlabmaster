@@ -45,6 +45,10 @@
 #include <linux/uaccess.h>
 #include <linux/slab.h>
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
+#include <linux/termios_internal.h>
+#endif
+
 #include "../master/globals.h"
 #include "../include/ectty.h"
 
@@ -67,7 +71,11 @@ static struct tty_driver *tty_driver = NULL;
 ec_tty_t *ttys[EC_TTY_MAX_DEVICES];
 struct semaphore tty_sem;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0)
+void ec_tty_wakeup(struct timer_list *);
+#else
 void ec_tty_wakeup(unsigned long);
+#endif
 
 /*****************************************************************************/
 
@@ -128,6 +136,7 @@ static const struct tty_operations ec_tty_ops; // see below
 int __init ec_tty_init_module(void)
 {
     int i, ret = 0;
+    unsigned flags = TTY_DRIVER_REAL_RAW | TTY_DRIVER_DYNAMIC_DEV;
 
     printk(KERN_INFO PFX "TTY driver %s\n", EC_MASTER_VERSION);
 
@@ -137,7 +146,11 @@ int __init ec_tty_init_module(void)
         ttys[i] = NULL;
     }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
+    tty_driver = tty_alloc_driver(EC_TTY_MAX_DEVICES, flags);
+#else
     tty_driver = alloc_tty_driver(EC_TTY_MAX_DEVICES);
+#endif
     if (!tty_driver) {
         printk(KERN_ERR PFX "Failed to allocate tty driver.\n");
         ret = -ENOMEM;
@@ -151,7 +164,9 @@ int __init ec_tty_init_module(void)
     tty_driver->minor_start = 0;
     tty_driver->type = TTY_DRIVER_TYPE_SERIAL;
     tty_driver->subtype = SERIAL_TYPE_NORMAL;
-    tty_driver->flags = TTY_DRIVER_REAL_RAW | TTY_DRIVER_DYNAMIC_DEV;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0)
+    tty_driver->flags = flags;
+#endif
     tty_driver->init_termios = ec_tty_std_termios;
     tty_set_operations(tty_driver, &ec_tty_ops);
 
@@ -164,7 +179,11 @@ int __init ec_tty_init_module(void)
     return ret;
 
 out_put:
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
+    tty_driver_kref_put(tty_driver);
+#else
     put_tty_driver(tty_driver);
+#endif
 out_return:
     return ret;
 }
@@ -177,8 +196,24 @@ out_return:
  */
 void __exit ec_tty_cleanup_module(void)
 {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0)
+    int i;
+
+    // Confirm that all kalloc'd ports have had kfree() called on them
+    for (i = 0; i < EC_TTY_MAX_DEVICES; i++) {
+        if (!tty_driver->ports[i]) continue;
+        tty_port_destroy(tty_driver->ports[i]);
+        kfree(tty_driver->ports[i]);
+        tty_driver->ports[i] = NULL;
+    }
+#endif
+
     tty_unregister_driver(tty_driver);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
+    tty_driver_kref_put(tty_driver);
+#else
     put_tty_driver(tty_driver);
+#endif
     printk(KERN_INFO PFX "Module unloading.\n");
 }
 
@@ -200,7 +235,13 @@ int ec_tty_init(ec_tty_t *t, int minor,
     t->wakeup = 0;
     t->rx_read_idx = 0;
     t->rx_write_idx = 0;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0)
+    timer_setup(&t->timer, ec_tty_wakeup, 0);
+#else
     init_timer(&t->timer);
+    t->timer.function = ec_tty_wakeup;
+    t->timer.data = (unsigned long) t;
+#endif
     t->tty = NULL;
     t->open_count = 0;
     sema_init(&t->sem, 1);
@@ -230,6 +271,15 @@ int ec_tty_init(ec_tty_t *t, int minor,
         cflag = tty_driver->init_termios.c_cflag;
     }
     ret = t->ops.cflag_changed(t->cb_data, cflag);
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0)
+    tty_driver->ports[minor] = kmalloc(sizeof(**tty_driver->ports),
+            GFP_KERNEL);
+    if (!tty_driver->ports[minor]) {
+        ret = -ENOMEM;
+    }
+#endif
+
     if (ret) {
         printk(KERN_ERR PFX "ERROR: Initial cflag 0x%x not accepted.\n",
                 cflag);
@@ -237,8 +287,10 @@ int ec_tty_init(ec_tty_t *t, int minor,
         return ret;
     }
 
-    t->timer.function = ec_tty_wakeup;
-    t->timer.data = (unsigned long) t;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0)
+    tty_port_init(tty_driver->ports[minor]);
+#endif
+
     t->timer.expires = jiffies + 10;
     add_timer(&t->timer);
     return 0;
@@ -317,9 +369,17 @@ int ec_tty_get_serial_info(ec_tty_t *tty, struct serial_struct *data)
 
 /** Timer function.
  */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0)
+void ec_tty_wakeup(struct timer_list *t)
+#else
 void ec_tty_wakeup(unsigned long data)
+#endif
 {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0)
+    ec_tty_t *tty = from_timer(tty, t, timer);
+#else
     ec_tty_t *tty = (ec_tty_t *) data;
+#endif
     size_t to_recv;
 
     /* Wake up any process waiting to send data */
@@ -344,8 +404,8 @@ void ec_tty_wakeup(unsigned long data)
 #endif
 
         if (space < to_recv) {
-            printk(KERN_WARNING PFX "Insufficient space to_recv=%d space=%d\n",
-                    to_recv, space);
+            printk(KERN_WARNING PFX "Insufficient space to_recv=%zu"
+                    " space=%d\n", to_recv, space);
         }
 
         if (space < 0) {
@@ -495,7 +555,11 @@ static void ec_tty_put_char(struct tty_struct *tty, unsigned char ch)
 
 /*****************************************************************************/
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0)
+static unsigned int ec_tty_write_room(struct tty_struct *tty)
+#else
 static int ec_tty_write_room(struct tty_struct *tty)
+#endif
 {
     ec_tty_t *t = (ec_tty_t *) tty->driver_data;
     int ret = ec_tty_tx_space(t);
@@ -509,7 +573,11 @@ static int ec_tty_write_room(struct tty_struct *tty)
 
 /*****************************************************************************/
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0)
+static unsigned int ec_tty_chars_in_buffer(struct tty_struct *tty)
+#else
 static int ec_tty_chars_in_buffer(struct tty_struct *tty)
+#endif
 {
     ec_tty_t *t = (ec_tty_t *) tty->driver_data;
     int ret;
@@ -566,8 +634,14 @@ static int ec_tty_ioctl(struct tty_struct *tty,
 
     switch (cmd) {
         case TIOCGSERIAL:
-            if (access_ok(VERIFY_WRITE,
-                        (void *) arg, sizeof(struct serial_struct))) {
+            if (
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 0, 0)
+            access_ok((void *) arg, sizeof(struct serial_struct))
+#else
+            access_ok(VERIFY_WRITE,
+                        (void *) arg, sizeof(struct serial_struct))
+#endif
+                    ) {
                 ret = ec_tty_get_serial_info(t, (struct serial_struct *) arg);
             } else {
                 ret = -EFAULT;
@@ -587,8 +661,13 @@ static int ec_tty_ioctl(struct tty_struct *tty,
 
 /*****************************************************************************/
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
+static void ec_tty_set_termios(struct tty_struct *tty,
+        const struct ktermios *old_termios)
+#else
 static void ec_tty_set_termios(struct tty_struct *tty,
         struct ktermios *old_termios)
+#endif
 {
     ec_tty_t *t = (ec_tty_t *) tty->driver_data;
     int ret;
@@ -750,10 +829,18 @@ ec_tty_t *ectty_create(const ec_tty_operations_t *ops, void *cb_data)
 
 void ectty_free(ec_tty_t *tty)
 {
-    printk(KERN_INFO PFX "Freeing TTY interface %i.\n", tty->minor);
+    int minor = tty->minor;
+
+    printk(KERN_INFO PFX "Freeing TTY interface %i.\n", minor);
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0)
+    tty_port_destroy(tty_driver->ports[minor]);
+    kfree(tty_driver->ports[minor]);
+    tty_driver->ports[minor] = NULL;
+#endif
 
     ec_tty_clear(tty);
-    ttys[tty->minor] = NULL;
+    ttys[minor] = NULL;
     kfree(tty);
 }
 
@@ -761,7 +848,7 @@ void ectty_free(ec_tty_t *tty)
 
 unsigned int ectty_tx_data(ec_tty_t *tty, uint8_t *buffer, size_t size)
 {
-    unsigned int data_size = min(ec_tty_tx_size(tty), size), i;
+    unsigned int data_size = min(ec_tty_tx_size(tty), (unsigned int) size), i;
 
     if (data_size)  {
 #if EC_TTY_DEBUG >= 1
@@ -794,10 +881,10 @@ void ectty_rx_data(ec_tty_t *tty, const uint8_t *buffer, size_t size)
         printk(KERN_INFO PFX "Received %u bytes.\n", size);
 #endif
 
-        to_recv = min(ec_tty_rx_space(tty), size);
+        to_recv = min(ec_tty_rx_space(tty), (unsigned int) size);
 
         if (to_recv < size) {
-            printk(KERN_WARNING PFX "Dropping %u bytes.\n", size - to_recv);
+            printk(KERN_WARNING PFX "Dropping %zu bytes.\n", size - to_recv);
         }
 
         for (i = 0; i < size; i++) {

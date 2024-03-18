@@ -1,8 +1,6 @@
 /******************************************************************************
  *
- *  $Id$
- *
- *  Copyright (C) 2006-2008  Florian Pose, Ingenieurgemeinschaft IgH
+ *  Copyright (C) 2006-2023  Florian Pose, Ingenieurgemeinschaft IgH
  *
  *  This file is part of the IgH EtherCAT Master.
  *
@@ -45,23 +43,26 @@
    The API documentations are in the <a href="modules.html">modules
    section</a>.
 
+   A list of all native network card drivers can be found
+   <a href="devicedrivers.html">here</a>.
+
    For information how to build and install, see the INSTALL file in the source
    root.
 
    \section sec_contact Contact
 
    \verbatim
-   Florian Pose <fp@igh-essen.com>
+   Florian Pose <fp@igh.de>
    Ingenieurgemeinschaft IgH
-   Heinz-Baecker-Str. 34
-   D-45356 Essen
-   http://igh-essen.com
+   Nordsternstraße 66
+   D-45329 Essen
+   http://igh.de
    \endverbatim
 
    \section sec_license License
 
    \verbatim
-   Copyright (C) 2006-2013  Florian Pose, Ingenieurgemeinschaft IgH
+   Copyright (C) 2006-2023  Florian Pose, Ingenieurgemeinschaft IgH
 
    This file is part of the IgH EtherCAT Master.
 

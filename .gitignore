@@ -32,7 +32,8 @@ configure
 ethercat.spec
 examples/dc_user/ec_dc_user_example
 examples/user/ec_user_example
-lib/EtherCATConfig.cmake
+examples/user/build/
+lib/*.cmake
 lib/libethercat.la
 lib/libethercat.pc
 libtool
@@ -42,3 +43,6 @@ script/ethercatctl
 script/init.d/ethercat
 stamp-h1
 tool/ethercat
+device_drivers.md
+generated_table.md
+doxygen-output/

@@ -1,8 +1,6 @@
-#------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------
 #
-#  $Id$
-#
-#  Copyright (C) 2006-2008  Florian Pose, Ingenieurgemeinschaft IgH
+#  Copyright (C) 2006-2023  Florian Pose, Ingenieurgemeinschaft IgH
 #
 #  This file is part of the IgH EtherCAT Master.
 #
@@ -25,17 +23,24 @@
 #  EtherCAT technology and brand is only permitted in compliance with the
 #  industrial property and similar rights of Beckhoff Automation GmbH.
 #
-#------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------
+
+include $(top_srcdir)/Makefile.kbuild
 
 ACLOCAL_AMFLAGS = -I m4
+
+AM_DISTCHECK_CONFIGURE_FLAGS = \
+	--disable-8139too \
+	--with-systemdsystemunitdir=$$dc_install_base/$(systemdsystemunitdir)
 
 SUBDIRS = \
 	include \
 	script
 
 if ENABLE_KERNEL
-SUBDIRS += devices
-SUBDIRS += master
+SUBDIRS += \
+	devices \
+	master
 endif
 
 if BUILD_TOOL
@@ -43,61 +48,35 @@ SUBDIRS += tool
 endif
 
 if ENABLE_USERLIB
-SUBDIRS += lib
+# userspace examples depend on lib/
+SUBDIRS += \
+	lib \
+	examples
 endif
 
 if ENABLE_TTY
 SUBDIRS += tty
 endif
 
-# userspace example depends on lib/
-SUBDIRS += examples
-
-DIST_SUBDIRS = \
-	devices \
-	examples \
-	include \
-	lib \
-	m4 \
-	master \
-	script \
-	tool \
-	tty
-
 noinst_HEADERS = \
 	globals.h
 
 EXTRA_DIST = \
-	Doxyfile.in \
-	FEATURES \
-	Kbuild.in \
+	CodingStyle.md \
+	FEATURES.md \
+	INSTALL.md \
 	README.EoE \
-	ethercat.spec \
-	ethercat.spec.in
-
-BUILT_SOURCES = \
-	Doxyfile \
-	Kbuild \
+	README.md \
 	ethercat.spec
 
-modules:
-	$(MAKE) -C "$(LINUX_SOURCE_DIR)" M="@abs_srcdir@" modules
-
-modules_install:
-	$(MAKE) -C "$(LINUX_SOURCE_DIR)" M="@abs_srcdir@" \
-		INSTALL_MOD_DIR="$(INSTALL_MOD_DIR)" modules_install
-
-clean-local:
-	$(MAKE) -C "$(LINUX_SOURCE_DIR)" M="@abs_srcdir@" clean
-
 mydist:
-	hg log --style=changelog $(srcdir) > ChangeLog
-	@REV=`hg id -i $(srcdir)` && \
+	git -C $(srcdir) log > ChangeLog
+	@REV=`git -C $(srcdir) describe` && \
 		$(MAKE) dist-bzip2 distdir=$(PACKAGE)-$(VERSION)-$${REV}
 
 dist-hook:
-	if which hg >/dev/null 2>&1; then \
-		hg id -i $(srcdir) 2>/dev/null >$(distdir)/revision; \
+	-if which git >/dev/null 2>&1; then \
+		git -C $(srcdir) describe 2>/dev/null >$(distdir)/revision; \
 	fi
 
 mrproper: clean cleandoc
@@ -121,10 +100,16 @@ mrproper: clean cleandoc
 		libtool \
 		stamp-h1
 
-doc:
+generated_table.md: devices/create_driver_table.py
+	python3 $< --markdown $@ $(abs_srcdir)/devices
+
+device_drivers.md: $(srcdir)/devices/device_drivers_template.md generated_table.md
+	cat $^ > $@
+
+doc: device_drivers.md
 	doxygen Doxyfile
 
 cleandoc:
-	@rm -rf doxygen-output
+	@rm -rf doxygen-output generated_table.md device_drivers.md
 
-#------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------

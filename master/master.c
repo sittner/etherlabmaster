@@ -42,6 +42,7 @@
 #include <linux/device.h>
 #include <linux/version.h>
 #include <linux/hrtimer.h>
+#include <linux/kthread.h>
 
 #include "globals.h"
 #include "slave.h"
@@ -68,6 +69,9 @@
 /** Always output corrupted frames.
  */
 #define FORCE_OUTPUT_CORRUPTED 0
+
+/** SDO injection timeout in microseconds. */
+#define EC_SDO_INJECTION_TIMEOUT 10000
 
 #ifdef EC_HAVE_CYCLES
 
@@ -141,7 +145,8 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
         const uint8_t *backup_mac, /**< MAC address of backup device */
         dev_t device_number, /**< Character device number. */
         struct class *class, /**< Device class. */
-        unsigned int debug_level /**< Debug level (module parameter). */
+        unsigned int debug_level, /**< Debug level (module parameter). */
+        unsigned int run_on_cpu /**< bind created kernel threads to a cpu */
         )
 {
     int ret;
@@ -219,6 +224,7 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
     master->fsm_exec_count = 0U;
 
     master->debug_level = debug_level;
+    master->run_on_cpu = run_on_cpu;
     master->stats.timeouts = 0;
     master->stats.corrupted = 0;
     master->stats.unmatched = 0;
@@ -578,7 +584,7 @@ int ec_master_thread_start(
         )
 {
     EC_MASTER_INFO(master, "Starting %s thread.\n", name);
-    master->thread = kthread_run(thread_func, master, name);
+    master->thread = kthread_create(thread_func, master, name);
     if (IS_ERR(master->thread)) {
         int err = (int) PTR_ERR(master->thread);
         EC_MASTER_ERR(master, "Failed to start master thread (error %i)!\n",
@@ -586,6 +592,12 @@ int ec_master_thread_start(
         master->thread = NULL;
         return err;
     }
+    if (0xffffffff != master->run_on_cpu) {
+        EC_MASTER_INFO(master, " binding thread to cpu %u\n",master->run_on_cpu);
+        kthread_bind(master->thread,master->run_on_cpu);
+    }
+    /* Ignoring return value of wake_up_process */
+    (void) wake_up_process(master->thread);
 
     return 0;
 }
@@ -1662,12 +1674,25 @@ static int ec_master_operation_thread(void *priv_data)
 /*****************************************************************************/
 
 #ifdef EC_EOE
+
+/* compatibility for priority changes */
+static inline void set_normal_priority(struct task_struct *p, int nice)
+{
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0)
+    sched_set_normal(p, nice);
+#else
+    struct sched_param param = { .sched_priority = 0 };
+    sched_setscheduler(p, SCHED_NORMAL, &param);
+    set_user_nice(p, nice);
+#endif
+}
+
+/*****************************************************************************/
+
 /** Starts Ethernet over EtherCAT processing on demand.
  */
 void ec_master_eoe_start(ec_master_t *master /**< EtherCAT master */)
 {
-    struct sched_param param = { .sched_priority = 0 };
-
     if (master->eoe_thread) {
         EC_MASTER_WARN(master, "EoE already running!\n");
         return;
@@ -1693,8 +1718,7 @@ void ec_master_eoe_start(ec_master_t *master /**< EtherCAT master */)
         return;
     }
 
-    sched_setscheduler(master->eoe_thread, SCHED_NORMAL, &param);
-    set_user_nice(master->eoe_thread, 0);
+    set_normal_priority(master->eoe_thread, 0);
 }
 
 /*****************************************************************************/
@@ -1774,6 +1798,7 @@ schedule:
     EC_MASTER_DBG(master, 1, "EoE thread exiting...\n");
     return 0;
 }
+
 #endif
 
 /*****************************************************************************/
@@ -2864,11 +2889,6 @@ int ecrt_master_sdo_download(ec_master_t *master, uint16_t slave_position,
             __func__, master, slave_position, index, subindex,
             data, data_size, abort_code);
 
-    if (!data_size) {
-        EC_MASTER_ERR(master, "Zero data size!\n");
-        return -EINVAL;
-    }
-
     ec_sdo_request_init(&request);
     ecrt_sdo_request_index(&request, index, subindex);
     ret = ec_sdo_request_alloc(&request, data_size);
@@ -2947,11 +2967,6 @@ int ecrt_master_sdo_download_complete(ec_master_t *master,
             " data = 0x%p, data_size = %zu, abort_code = 0x%p)\n",
             __func__, master, slave_position, index, data, data_size,
             abort_code);
-
-    if (!data_size) {
-        EC_MASTER_ERR(master, "Zero data size!\n");
-        return -EINVAL;
-    }
 
     ec_sdo_request_init(&request);
     ecrt_sdo_request_index(&request, index, 0);

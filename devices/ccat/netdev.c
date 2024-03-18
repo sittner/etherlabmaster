@@ -24,11 +24,22 @@
 #include <linux/netdevice.h>
 #include <linux/version.h>
 
-#ifdef CONFIG_PCI
+#ifdef CONFIG_GENERIC_ISA_DMA
 #include <asm/dma.h>
 #else
 #define free_dma(X)
 #define request_dma(X, Y) ((int)(-EINVAL))
+#endif
+
+#ifdef CONFIG_SUSE_KERNEL
+#include <linux/suse_version.h>
+#else
+#  ifndef SUSE_VERSION
+#    define SUSE_VERSION 0
+#  endif
+#  ifndef SUSE_PATCHLEVEL
+#    define SUSE_PATCHLEVEL 0
+#  endif
 #endif
 
 #include "module.h"
@@ -249,9 +260,11 @@ struct ccat_mac_register {
 	u8 mii_connected;
 };
 
+static void ccat_eth_fifo_reset(struct ccat_eth_fifo *const fifo);
 static void fifo_set_end(struct ccat_eth_fifo *const fifo, size_t size)
 {
 	fifo->end = fifo->mem.start + size - sizeof(struct ccat_eth_frame);
+	ccat_eth_fifo_reset(fifo);
 }
 
 static void ccat_dma_free(struct ccat_eth_priv *const priv)
@@ -894,8 +907,18 @@ static int ccat_eth_init_netdev(struct ccat_eth_priv *priv)
 	int status;
 
 	/* init netdev with MAC and stack callbacks */
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0) || (SUSE_VERSION == 15 && SUSE_PATCHLEVEL == 5)
+	u8 mac_addr[ETH_ALEN];
+
+	if (priv->netdev->addr_len != ETH_ALEN)
+		return -EFAULT;
+	memcpy_fromio(mac_addr, priv->reg.mii + 8, ETH_ALEN);
+	eth_hw_addr_set(priv->netdev, mac_addr);
+#else
 	memcpy_fromio(priv->netdev->dev_addr, priv->reg.mii + 8,
 		      priv->netdev->addr_len);
+#endif
 	priv->netdev->netdev_ops = &ccat_eth_netdev_ops;
 
 	/* use as EtherCAT device? */

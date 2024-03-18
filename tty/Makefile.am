@@ -26,26 +26,13 @@
 #  industrial property and similar rights of Beckhoff Automation GmbH.
 #
 #------------------------------------------------------------------------------
+include $(top_srcdir)/Makefile.kbuild
 
 # using HEADERS to enable tags target
 noinst_HEADERS = \
 	module.c
 
 EXTRA_DIST = \
-	Kbuild.in \
 	README
-
-BUILT_SOURCES = \
-	Kbuild
-
-modules:
-	$(MAKE) -C "$(LINUX_SOURCE_DIR)" M="@abs_srcdir@" modules
-
-modules_install:
-	$(MAKE) -C "$(LINUX_SOURCE_DIR)" M="@abs_srcdir@" \
-		INSTALL_MOD_DIR="$(INSTALL_MOD_DIR)" modules_install
-
-clean-local:
-	$(MAKE) -C "$(LINUX_SOURCE_DIR)" M="@abs_srcdir@" clean
 
 #------------------------------------------------------------------------------
