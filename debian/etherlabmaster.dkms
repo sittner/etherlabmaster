@@ -25,7 +25,7 @@ BUILT_MODULE_NAME[3]="devices/igb/ec_igb"
 DEST_MODULE_NAME[3]="ec_igb"
 DEST_MODULE_LOCATION[3]="/updates/dkms"
 
-BUILT_MODULE_NAME[4]="devices/ec_r8169"
+BUILT_MODULE_NAME[4]="devices/r8169/ec_r8169"
 DEST_MODULE_NAME[4]="ec_r8169"
 DEST_MODULE_LOCATION[4]="/updates/dkms"
 
