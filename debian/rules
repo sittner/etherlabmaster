@@ -2,7 +2,7 @@
 
 VERSION ?= $(shell dpkg-parsechangelog | sed -rne 's/^Version: ([0-9.]+(\+[0-9]*hg[0-9a-z]*)?).*$$/\1/p')
 
-CONFFLAGS += --disable-eoe --enable-sii-assign
+CONFFLAGS += --enable-sii-assign
 
 ifeq ($(DEB_HOST_ARCH_OS),linux)
 	CONFFLAGS += --enable-kernel --enable-generic --enable-ccat --disable-8139too --disable-e100 --disable-e1000 --enable-e1000e --enable-igb --enable-r8169 --enable-hrtimer --enable-rtmutex
