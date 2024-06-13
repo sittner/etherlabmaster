@@ -1,3 +1,9 @@
+etherlabmaster (1:1.6.0+mds20240322.1) bookworm; urgency=low
+
+  * use current 1.6.0 upstrem version
+
+ -- Sascha Ittner <sascha.ittner@modusoft.de>  Thu, 13 Jun 2024 11:00:30 +0200
+
 etherlabmaster (1:1.5.3+mds20240322.1) bookworm; urgency=low
 
   * use current 1.5.3 upstrem version
