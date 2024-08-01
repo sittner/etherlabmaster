@@ -160,6 +160,21 @@ AC_MSG_CHECKING([for Linux modules installation directory])
 AC_MSG_RESULT([$INSTALL_MOD_DIR])
 
 #-----------------------------------------------------------------------------
+# Linux module source directory
+#-----------------------------------------------------------------------------
+
+AC_ARG_WITH([module-src-dir],
+    AS_HELP_STRING([--with-module-src-dir=<DIR>],[DKMS source dir. Default: $ac_abs_confdir
+    ]),
+    [modsrcdir=[$withval]],
+    [modsrcdir=$ac_abs_confdir]
+)
+AC_SUBST(SRC_MOD_DIR,[$modsrcdir])
+
+AC_MSG_CHECKING([for Linux modules source directory])
+AC_MSG_RESULT([$SRC_MOD_DIR])
+
+#-----------------------------------------------------------------------------
 # Native driver resource (de)allocation verifying
 #-----------------------------------------------------------------------------
 
