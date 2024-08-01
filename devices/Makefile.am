@@ -23,6 +23,7 @@ include $(top_srcdir)/Makefile.kbuild
 
 SUBDIRS = \
 	ccat \
+	encx24j600 \
 	e1000 \
 	e1000e \
 	genet \

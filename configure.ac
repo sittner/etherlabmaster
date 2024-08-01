@@ -765,6 +765,37 @@ AM_CONDITIONAL(ENABLE_CCAT, test "x$enableccat" = "x1")
 AC_SUBST(ENABLE_CCAT,[$enableccat])
 
 #-----------------------------------------------------------------------------
+# ENCX24J600_SMI driver
+#-----------------------------------------------------------------------------
+
+AC_MSG_CHECKING([whether to build the ENCX24J600_SMI driver])
+
+AC_ARG_ENABLE([encx24j600-smi],
+    AS_HELP_STRING([--enable-encx24j600-smi],
+                   [Enable ENCX24J600_SMI driver]),
+    [
+        case "${enableval}" in
+            yes) enableencx24j600smi=1
+                ;;
+            no) enableencx24j600smi=0
+                ;;
+            *) AC_MSG_ERROR([Invalid value for --enable-encx24j600-smi])
+                ;;
+        esac
+    ],
+    [enableencx24j600smi=0] # disabled by default
+)
+
+if test "x${enableencx24j600smi}" = "x1"; then
+    AC_MSG_RESULT([yes])
+else
+    AC_MSG_RESULT([no])
+fi
+
+AM_CONDITIONAL(ENABLE_ENCX24J600_SMI, test "x$enableencx24j600smi" = "x1")
+AC_SUBST(ENABLE_ENCX24J600_SMI,[$enableencx24j600smi])
+
+#-----------------------------------------------------------------------------
 # RTAI path (optional)
 #-----------------------------------------------------------------------------
 
@@ -1374,6 +1405,8 @@ AC_CONFIG_FILES([
         devices/Makefile
         devices/ccat/Kbuild
         devices/ccat/Makefile
+        devices/encx24j600/Kbuild
+        devices/encx24j600/Makefile
         devices/e1000/Kbuild
         devices/e1000/Makefile
         devices/e1000e/Kbuild

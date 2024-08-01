@@ -1,0 +1,40 @@
+#-----------------------------------------------------------------------------
+#
+#  Copyright (C) 2006-2008  Florian Pose, Ingenieurgemeinschaft IgH
+#
+#  This file is part of the IgH EtherCAT Master.
+#
+#  The IgH EtherCAT Master is free software; you can redistribute it and/or
+#  modify it under the terms of the GNU General Public License version 2, as
+#  published by the Free Software Foundation.
+#
+#  The IgH EtherCAT Master is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General
+#  Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License along
+#  with the IgH EtherCAT Master; if not, write to the Free Software
+#  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+#
+#-----------------------------------------------------------------------------
+
+include $(top_srcdir)/Makefile.kbuild
+
+DTC ?= dtc
+
+EXTRA_DIST = \
+	encx24j600.c \
+	encx24j600.h \
+	encx24j600_hw.h \
+	encx24j600-smi.c
+
+CLEANFILES = encx24j600-smi.dtbo
+
+dist_data_DATA = encx24j600-smi.dtbo
+
+.dts.dtbo:
+	$(DTC) -W no-unit_address_vs_reg -@ -I dts -O dtb -o $@ $<
+
+PHONY: overlays
+#-----------------------------------------------------------------------------

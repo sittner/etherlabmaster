@@ -3,6 +3,7 @@ set -e
 #DEBHELPER#
 getent group ethercat >/dev/null || groupadd -r ethercat
 if [ "$1" = "configure" ] ; then
+  cp usr/share/ethercat/overlays/* /boot/overlays
   depmod -a
   update-ethercat-config
 fi

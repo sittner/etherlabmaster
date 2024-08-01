@@ -12,6 +12,7 @@ ifeq ($(DEB_HOST_ARCH_OS),linux)
 	CONFFLAGS += --disable-e100
 	CONFFLAGS += --disable-e1000
 	CONFFLAGS += --enable-genet
+	CONFFLAGS += --enable-encx24j600-smi
 endif
 
 default:
@@ -39,6 +40,7 @@ override_dh_install:
 	dh_install -petherlabmaster devices/Kbuild devices/ecdev.h devices/generic.c $(DKMS_SRC_DIR)/devices
 	dh_install -petherlabmaster -X.o -X.ko -XMakefile -X.in -X.am devices/ccat/ $(DKMS_SRC_DIR)/devices
 	dh_install -petherlabmaster -X.o -X.ko -XMakefile -X.in -X.am devices/genet/ $(DKMS_SRC_DIR)/devices
+	dh_install -petherlabmaster -X.o -X.ko -XMakefile -X.in -X.am -X.dts -X.dtbo devices/encx24j600/ $(DKMS_SRC_DIR)/devices
 
 override_dh_dkms:
 	dh_dkms -V $(VERSION)

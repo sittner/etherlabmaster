@@ -1,0 +1,61 @@
+/* Overlay for the Microchip ENCx24J600 Ethernet Controller (PSP mode 5 via BCM2708 SMI) */
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "brcm,bcm2835", "brcm,bcm2836", "brcm,bcm2708", "brcm,bcm2709";
+
+	fragment@0 {
+		target = <&smi>;
+		__overlay__ {
+			pinctrl-names = "default";
+			pinctrl-0 = <&smi_pins>;
+			status = "okay";
+		};
+	};
+
+	fragment@1 {
+		target = <&soc>;
+		__overlay__ {
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			eth1: encx24j600-smi@0 {
+				compatible = "microchip,encx24j600-smi";
+				smi_handle = <&smi>;
+				#address-cells = <1>;
+				#size-cells = <1>;
+				pinctrl-names = "default";
+				pinctrl-0 = <&eth1_pins>;
+				interrupt-parent = <&gpio>;
+				interrupts = <19 0x8>; /* active low */
+				status = "okay";
+			};
+		};
+	};
+
+	fragment@2 {
+		target = <&gpio>;
+		__overlay__ {
+			smi_pins: smi_pins {
+				brcm,pins = <4 5 6 7 8 9 10 11 12 13 14 15>;
+				/* Alt 1: SMI */
+				brcm,function = <5 5 5 5 5 5 5 5 5 5 5 5>;
+				/* /OE and /WR are pulled high, as they are active low signals */
+				brcm,pull = <1 1 2 2 0 0 0 0 0 0 0 0>;
+			};
+		};
+	};
+
+	fragment@3 {
+		target = <&gpio>;
+		__overlay__ {
+			eth1_pins: eth1_pins {
+				brcm,pins = <19>;
+				brcm,function = <0>; /* in */
+				brcm,pull = <0>; /* none */
+			};
+		};
+	};
+
+};

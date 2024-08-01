@@ -25,9 +25,13 @@ BUILT_MODULE_NAME[3]="devices/genet/ec_genet"
 DEST_MODULE_NAME[3]="ec_genet"
 DEST_MODULE_LOCATION[3]="/updates/dkms"
 
-BUILT_MODULE_NAME[4]="examples/mini/ec_mini"
-DEST_MODULE_NAME[4]="ec_mini"
+BUILT_MODULE_NAME[4]="devices/encx24j600/ec_encx24j600_smi"
+DEST_MODULE_NAME[4]="ec_encx24j600_smi"
 DEST_MODULE_LOCATION[4]="/updates/dkms"
+
+BUILT_MODULE_NAME[5]="examples/mini/ec_mini"
+DEST_MODULE_NAME[5]="ec_mini"
+DEST_MODULE_LOCATION[5]="/updates/dkms"
 
 POST_BUILD="postbld \${kernel_source_dir} $dkms_tree/$PACKAGE_NAME/$PACKAGE_VERSION/build"
 POST_REMOVE="postrm \${kernel_source_dir} $dkms_tree/$PACKAGE_NAME/$PACKAGE_VERSION/build"

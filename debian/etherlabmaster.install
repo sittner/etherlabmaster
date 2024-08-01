@@ -6,4 +6,4 @@ usr/lib/*/*.so*
 usr/lib/*/cmake/ethercat/ethercat-config.cmake
 usr/lib/*/pkgconfig/libethercat.pc
 usr/share/bash-completion/completions/ethercat
-
+usr/share/*.dtbo usr/share/ethercat/overlays
