@@ -36,6 +36,7 @@ override_dh_auto_configure:
 		$(CONFFLAGS)
 
 override_dh_install:
+	dh_install
 	dh_install -petherlabmaster config.h globals.h Kbuild $(DKMS_SRC_DIR)
 	dh_install -petherlabmaster -X.o -X.ko -XMakefile -X.in -X.am examples/ include/ master/ tty/ $(DKMS_SRC_DIR)
 	dh_install -petherlabmaster debian/dkms/* $(DKMS_SRC_DIR)
