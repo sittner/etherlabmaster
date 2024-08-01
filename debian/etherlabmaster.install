@@ -3,7 +3,5 @@ etc/sysconfig/* etc/default/
 usr/bin/*
 usr/sbin/*
 usr/lib/*/*.so*
-usr/lib/*/cmake/ethercat/ethercat-config.cmake
-usr/lib/*/pkgconfig/libethercat.pc
 usr/share/bash-completion/completions/ethercat
 
