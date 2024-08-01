@@ -23,8 +23,8 @@
 #
 #-----------------------------------------------------------------------------
 
-src := @abs_srcdir@
-ccflags-y := -I@abs_top_builddir@
+src := @SRC_MOD_DIR@/devices/igc
+ccflags-y := -I@SRC_MOD_DIR@
 
 TOPDIR := $(src)/../..
 

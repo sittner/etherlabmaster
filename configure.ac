@@ -19,7 +19,7 @@
 #
 #-----------------------------------------------------------------------------
 
-AC_PREREQ(2.59)
+AC_PREREQ([2.71])
 
 #
 # Release procedure
@@ -31,7 +31,7 @@ AC_PREREQ(2.59)
 # - Update version number below
 # - make dist-bzip2
 #
-AC_INIT([ethercat],[1.6.0],[fp@igh.de])
+AC_INIT([ethercat],[1.6.1],[fp@igh.de])
 AC_CONFIG_AUX_DIR([autoconf])
 AM_INIT_AUTOMAKE([-Wall -Wno-override -Werror dist-bzip2 subdir-objects foreign])
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
@@ -49,7 +49,7 @@ PKG_INSTALLDIR()
 AM_PROG_CC_C_O
 m4_ifdef([AM_PROG_AR], [AM_PROG_AR])
 AC_PROG_CXX
-AC_PROG_LIBTOOL
+LT_INIT
 
 #-----------------------------------------------------------------------------
 # Kernel modules
@@ -89,10 +89,8 @@ AC_SUBST(ENABLE_KERNEL,[$enablekernel])
 if test "x$enablekernel" = "x1"; then
 
 AC_ARG_WITH([linux-dir],
-    AC_HELP_STRING(
-        [--with-linux-dir=<DIR>],
-        [Linux kernel sources @<:@running kernel@:>@]
-    ),
+    AS_HELP_STRING([--with-linux-dir=<DIR>],[Linux kernel sources @<:@running kernel@:>@
+    ]),
     [
         sourcedir=[$withval]
     ],
@@ -151,10 +149,8 @@ fi
 #-----------------------------------------------------------------------------
 
 AC_ARG_WITH([module-dir],
-    AC_HELP_STRING(
-        [--with-module-dir=<DIR>],
-        [Linux module installation dir. Default: ethercat]
-    ),
+    AS_HELP_STRING([--with-module-dir=<DIR>],[Linux module installation dir. Default: ethercat
+    ]),
     [moddir=[$withval]],
     [moddir="ethercat"]
 )
@@ -162,6 +158,21 @@ AC_SUBST(INSTALL_MOD_DIR,[$moddir])
 
 AC_MSG_CHECKING([for Linux modules installation directory])
 AC_MSG_RESULT([$INSTALL_MOD_DIR])
+
+#-----------------------------------------------------------------------------
+# Linux module source directory
+#-----------------------------------------------------------------------------
+
+AC_ARG_WITH([module-src-dir],
+    AS_HELP_STRING([--with-module-src-dir=<DIR>],[DKMS source dir. Default: $ac_abs_confdir
+    ]),
+    [modsrcdir=[$withval]],
+    [modsrcdir=$ac_abs_confdir]
+)
+AC_SUBST(SRC_MOD_DIR,[$modsrcdir])
+
+AC_MSG_CHECKING([for Linux modules source directory])
+AC_MSG_RESULT([$SRC_MOD_DIR])
 
 #-----------------------------------------------------------------------------
 # Native driver resource (de)allocation verifying
@@ -241,10 +252,8 @@ AM_CONDITIONAL(ENABLE_8139TOO, test "x$enable8139too" = "x1")
 AC_SUBST(ENABLE_8139TOO,[$enable8139too])
 
 AC_ARG_WITH([8139too-kernel],
-    AC_HELP_STRING(
-        [--with-8139too-kernel=<X.Y.Z>],
-        [8139too kernel (only if differing)]
-    ),
+    AS_HELP_STRING([--with-8139too-kernel=<X.Y.Z>],[8139too kernel (only if differing)
+    ]),
     [
         kernel8139too=[$withval]
     ],
@@ -296,10 +305,8 @@ AM_CONDITIONAL(ENABLE_E100, test "x$enablee100" = "x1")
 AC_SUBST(ENABLE_E100,[$enablee100])
 
 AC_ARG_WITH([e100-kernel],
-    AC_HELP_STRING(
-        [--with-e100-kernel=<X.Y.Z>],
-        [e100 kernel (only if differing)]
-    ),
+    AS_HELP_STRING([--with-e100-kernel=<X.Y.Z>],[e100 kernel (only if differing)
+    ]),
     [
         kernele100=[$withval]
     ],
@@ -351,10 +358,8 @@ AM_CONDITIONAL(ENABLE_E1000, test "x$enablee1000" = "x1")
 AC_SUBST(ENABLE_E1000,[$enablee1000])
 
 AC_ARG_WITH([e1000-kernel],
-    AC_HELP_STRING(
-        [--with-e1000-kernel=<X.Y.Z>],
-        [e1000 kernel (only if differing)]
-    ),
+    AS_HELP_STRING([--with-e1000-kernel=<X.Y.Z>],[e1000 kernel (only if differing)
+    ]),
     [
         kernele1000=[$withval]
     ],
@@ -406,10 +411,8 @@ AM_CONDITIONAL(ENABLE_E1000E, test "x$enablee1000e" = "x1")
 AC_SUBST(ENABLE_E1000E,[$enablee1000e])
 
 AC_ARG_WITH([e1000e-kernel],
-    AC_HELP_STRING(
-        [--with-e1000e-kernel=<X.Y.Z>],
-        [e1000e kernel (only if differing)]
-    ),
+    AS_HELP_STRING([--with-e1000e-kernel=<X.Y.Z>],[e1000e kernel (only if differing)
+    ]),
     [
         kernele1000e=[$withval]
     ],
@@ -481,10 +484,8 @@ AM_CONDITIONAL(ENABLE_GENET, test "x$enablegenet" = "x1")
 AC_SUBST(ENABLE_GENET,[$enablegenet])
 
 AC_ARG_WITH([genet-kernel],
-    AC_HELP_STRING(
-        [--with-genet-kernel=<X.Y.Z>],
-        [genet kernel (only if differing)]
-    ),
+    AS_HELP_STRING([--with-genet-kernel=<X.Y.Z>],[genet kernel (only if differing)
+    ]),
     [
         kernelgenet=[$withval]
     ],
@@ -529,10 +530,8 @@ AM_CONDITIONAL(ENABLE_IGB, test "x$enableigb" = "x1")
 AC_SUBST(ENABLE_IGB,[$enableigb])
 
 AC_ARG_WITH([igb-kernel],
-    AC_HELP_STRING(
-        [--with-igb-kernel=<X.Y.Z>],
-        [igb kernel (only if differing)]
-    ),
+    AS_HELP_STRING([--with-igb-kernel=<X.Y.Z>],[igb kernel (only if differing)
+    ]),
     [
         kerneligb=[$withval]
     ],
@@ -624,10 +623,8 @@ AM_CONDITIONAL(ENABLE_R8169, test "x$enable_r8169" = "x1")
 AC_SUBST(ENABLE_R8169,[$enable_r8169])
 
 AC_ARG_WITH([r8169-kernel],
-    AC_HELP_STRING(
-        [--with-r8169-kernel=<X.Y.Z>],
-        [r8169 kernel (only if differing)]
-    ),
+    AS_HELP_STRING([--with-r8169-kernel=<X.Y.Z>],[r8169 kernel (only if differing)
+    ]),
     [
         kernel_r8169=[$withval]
     ],
@@ -714,10 +711,8 @@ AM_CONDITIONAL(ENABLE_STMMAC, test "x$enablestmmac" = "x1")
 AC_SUBST(ENABLE_STMMAC, [$enablestmmac])
 
 AC_ARG_WITH([stmmac-kernel],
-    AC_HELP_STRING(
-        [--with-stmmac-kernel=<X.Y.Z>],
-        [stmmac kernel (only if differing)]
-    ),
+    AS_HELP_STRING([--with-stmmac-kernel=<X.Y.Z>],[stmmac kernel (only if differing)
+    ]),
     [
         kernelstmmac=[$withval]
     ],
@@ -774,10 +769,8 @@ AC_SUBST(ENABLE_CCAT,[$enableccat])
 #-----------------------------------------------------------------------------
 
 AC_ARG_WITH([rtai-dir],
-    AC_HELP_STRING(
-        [--with-rtai-dir=<DIR>],
-        [RTAI path, for RTDM interface and RTAI examples]
-    ),
+    AS_HELP_STRING([--with-rtai-dir=<DIR>],[RTAI path, for RTDM interface and RTAI examples
+    ]),
     [
         rtaidir=[$withval]
         rtai=1
@@ -818,10 +811,8 @@ AC_SUBST(RTAI_KERNEL_CFLAGS,[$rtai_kernel_cflags])
 #-----------------------------------------------------------------------------
 
 AC_ARG_WITH([xenomai-dir],
-    AC_HELP_STRING(
-        [--with-xenomai-dir=<DIR>],
-        [Xenomai path, for RTDM interface and Xenomai examples]
-    ),
+    AS_HELP_STRING([--with-xenomai-dir=<DIR>],[Xenomai path, for RTDM interface and Xenomai examples
+    ]),
     [
         xenomaidir=[$withval]
         xeno=1
@@ -833,10 +824,8 @@ AC_ARG_WITH([xenomai-dir],
 )
 
 AC_ARG_WITH([xenomai-config],
-    AC_HELP_STRING(
-        [--with-xenomai-config=<CMD>],
-        [Xenomai config invokation, default to xenomai-dir/bin/xeno-config]
-    ),
+    AS_HELP_STRING([--with-xenomai-config=<CMD>],[Xenomai config invokation, default to xenomai-dir/bin/xeno-config
+    ]),
     [
         xenomaiconfig=[$withval]
     ],
@@ -899,10 +888,8 @@ AC_SUBST(XENOMAI_RTDM_LDFLAGS,[$xeno_rtdm_ldflags])
 #-----------------------------------------------------------------------------
 
 AC_ARG_ENABLE([rtdm],
-    AC_HELP_STRING(
-        [--enable-rtdm],
-        [Enable RTDM interface, depends on RTAI or Xenomai]
-    ),
+    AS_HELP_STRING([--enable-rtdm],[Enable RTDM interface, depends on RTAI or Xenomai
+    ]),
     [
         case "${enableval}" in
             yes) rtdm=1
@@ -1169,6 +1156,37 @@ fi
 AM_CONDITIONAL(ENABLE_USERLIB, test "x$userlib" = "x1")
 
 #-----------------------------------------------------------------------------
+# Fake Userspace library generation
+#-----------------------------------------------------------------------------
+
+AC_MSG_CHECKING([whether to build the fake userspace library])
+
+AC_ARG_ENABLE([fakeuserlib],
+    AS_HELP_STRING([--enable-fakeuserlib],
+                   [Generation of the userspace library (default: no)]),
+    [
+        case "${enableval}" in
+            yes) fakeuserlib=1
+                ;;
+            no) fakeuserlib=0
+                ;;
+            *) AC_MSG_ERROR([Invalid value for --enable-fakeuserlib])
+                ;;
+        esac
+    ],
+    [fakeuserlib=0]
+)
+
+if test "x${fakeuserlib}" = "x1"; then
+    AC_MSG_RESULT([yes])
+    PKG_CHECK_MODULES([RTIPC], [librtipc])
+else
+    AC_MSG_RESULT([no])
+fi
+
+AM_CONDITIONAL(ENABLE_FAKEUSERLIB, test "x$fakeuserlib" = "x1")
+
+#-----------------------------------------------------------------------------
 # TTY driver
 #-----------------------------------------------------------------------------
 
@@ -1234,10 +1252,8 @@ fi
 #-----------------------------------------------------------------------------
 
 AC_ARG_WITH([devices],
-    AC_HELP_STRING(
-        [--with-devices=<NUMBER>],
-        [Number of Ethernet devices per master. Default: 1]
-    ),
+    AS_HELP_STRING([--with-devices=<NUMBER>],[Number of Ethernet devices per master. Default: 1
+    ]),
     [
         devices=[$withval]
     ],
@@ -1389,6 +1405,7 @@ AC_CONFIG_FILES([
         examples/user/Makefile
         examples/xenomai/Makefile
         examples/xenomai_posix/Makefile
+        fake_lib/Makefile
         include/Makefile
         lib/Makefile
         lib/libethercat.pc

@@ -1,11 +1,17 @@
 #!/usr/bin/make -f
 
-VERSION ?= $(shell dpkg-parsechangelog | sed -rne 's/^Version: ([0-9.]+(\+[0-9]*hg[0-9a-z]*)?).*$$/\1/p')
+VERSION ?= $(shell dpkg-parsechangelog | sed -rne 's/^Version: ([0-9]+:)?(.*)$$/\2/p')
+
+DKMS_SRC_DIR = usr/src/etherlabmaster-$(VERSION)
 
 CONFFLAGS += --enable-sii-assign
 
 ifeq ($(DEB_HOST_ARCH_OS),linux)
-	CONFFLAGS += --enable-kernel --enable-generic --enable-ccat --enable-genet --enable-hrtimer --enable-rtmutex
+	CONFFLAGS += --enable-kernel --enable-hrtimer --enable-rtmutex --enable-generic --enable-ccat
+	CONFFLAGS += --with-module-src-dir=/$(DKMS_SRC_DIR)
+	CONFFLAGS += --disable-e100
+	CONFFLAGS += --disable-e1000
+	CONFFLAGS += --enable-genet
 endif
 
 default:
@@ -15,7 +21,7 @@ default:
 	dh $@ --with autoreconf,dkms
 
 override_dh_autoreconf:
-	touch ChangeLog
+	git log > ChangeLog
 	dh_autoreconf
 
 override_dh_clean:
@@ -27,14 +33,12 @@ override_dh_auto_configure:
 		$(CONFFLAGS)
 
 override_dh_install:
-	dh_install --list-missing
-
-	dh_install -petherlabmaster config.h globals.h Kbuild usr/src/etherlabmaster-$(VERSION)
-	dh_install -petherlabmaster -X.o -X.ko -XMakefile -X.in -X.am examples/ include/ master/ tty/ usr/src/etherlabmaster-$(VERSION)
-	dh_install -petherlabmaster debian/dkms/* usr/src/etherlabmaster-$(VERSION)
-	dh_install -petherlabmaster devices/Kbuild devices/ecdev.h devices/generic.c usr/src/etherlabmaster-$(VERSION)/devices
-	dh_install -petherlabmaster -X.o -X.ko -XMakefile -X.in -X.am devices/ccat/ usr/src/etherlabmaster-$(VERSION)/devices
-	dh_install -petherlabmaster -X.o -X.ko -XMakefile -X.in -X.am devices/genet/ usr/src/etherlabmaster-$(VERSION)/devices
+	dh_install -petherlabmaster config.h globals.h Kbuild $(DKMS_SRC_DIR)
+	dh_install -petherlabmaster -X.o -X.ko -XMakefile -X.in -X.am examples/ include/ master/ tty/ $(DKMS_SRC_DIR)
+	dh_install -petherlabmaster debian/dkms/* $(DKMS_SRC_DIR)
+	dh_install -petherlabmaster devices/Kbuild devices/ecdev.h devices/generic.c $(DKMS_SRC_DIR)/devices
+	dh_install -petherlabmaster -X.o -X.ko -XMakefile -X.in -X.am devices/ccat/ $(DKMS_SRC_DIR)/devices
+	dh_install -petherlabmaster -X.o -X.ko -XMakefile -X.in -X.am devices/genet/ $(DKMS_SRC_DIR)/devices
 
 override_dh_dkms:
 	dh_dkms -V $(VERSION)

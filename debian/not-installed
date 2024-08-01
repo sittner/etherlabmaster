@@ -1,0 +1,4 @@
+etc/ethercat.conf
+etc/init.d/ethercat
+lib/systemd/system/ethercat.service
+
