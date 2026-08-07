@@ -1,3 +1,11 @@
+> [!IMPORTANT]
+> **This repository is archived and no longer actively maintained.**
+>
+> Further development now happens at **[@stratuMAK/ethercat](https://github.com/stratuMAK/ethercat)**.
+> Please direct new issues, pull requests, and contributions there.
+
+---
+
 This is the README file of the IgH EtherCAT Master.
 
 vim: spelllang=en spell tw=78
